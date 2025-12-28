@@ -1,12 +1,4 @@
-import {
-	App,
-	Editor,
-	MarkdownView,
-	MenuItem,
-	Modal,
-	Notice,
-	Plugin,
-} from "obsidian";
+import { MarkdownView, MenuItem, Notice, Plugin, TFile } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	DocxPluginSettings,
@@ -17,13 +9,117 @@ import {
 	Packer,
 	Paragraph,
 	TextRun,
-	HeadingLevel,
-	FileChild,
+	ImageRun,
+	Footer,
+	AlignmentType,
+	PageNumber,
+	convertMillimetersToTwip,
+	NumberFormat,
+	HorizontalPositionAlign,
+	VerticalPositionRelativeFrom,
+	HorizontalPositionRelativeFrom,
+	VerticalPositionAlign,
 } from "docx";
+import { get } from "http";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
 	mainIcon: string = "file-input";
+	properties = {
+		titlePage: true,
+		page: {
+			pageNumbers: {
+				start: 1,
+				formatType: NumberFormat.DECIMAL,
+			},
+			margin: {
+				top: "2cm",
+				right: "2cm",
+				bottom: "2cm",
+				left: "3cm",
+			},
+		},
+	};
+
+	footers = {
+		default: new Footer({
+			children: [
+				new Paragraph({
+					alignment: AlignmentType.CENTER,
+					children: [
+						new TextRun({
+							children: ["", PageNumber.CURRENT],
+						}),
+					],
+				}),
+			],
+		}),
+		first: new Footer({
+			children: [new Paragraph({ text: "" })],
+		}),
+	};
+
+	styles = {
+		default: {
+			document: {
+				run: {
+					size: "14pt",
+					font: "Times New Roman",
+				},
+				paragraph: {
+					alignment: AlignmentType.JUSTIFIED,
+					indent: {
+						firstLine: convertMillimetersToTwip(12.5),
+					},
+					spacing: {
+						line: 360,
+					},
+				},
+			},
+		},
+		paragraphStyles: [
+			{
+				id: "chapter",
+				name: "Глава",
+				basedOn: "normal",
+				quickFormat: true,
+				next: "paragraph",
+				run: {
+					size: "16pt",
+				},
+				paragraph: {
+					outlineLevel: 0,
+				},
+			},
+			{
+				id: "paragraph",
+				name: "Параграф",
+				basedOn: "heading2",
+				next: "normal",
+				quickFormat: true,
+				paragraph: {
+					outlineLevel: 1,
+					spacing: {
+						before: 120,
+						after: 120,
+					},
+				},
+			},
+			{
+				id: "image",
+				name: "Рисунок",
+				basedOn: "normal",
+				next: "normal",
+				quickFormat: true,
+				paragraph: {
+					alignment: AlignmentType.CENTER,
+					indent: {
+						firstLine: 0,
+					},
+				},
+			},
+		],
+	};
 
 	async onload() {
 		await this.loadSettings();
@@ -39,20 +135,31 @@ export default class DocxPlugin extends Plugin {
 		);
 
 		// Боковая панель
-		this.addRibbonIcon(
-			this.mainIcon,
-			"Экспортировать в .docx",
-			() => this.exportFile()
+		this.addRibbonIcon(this.mainIcon, "Экспортировать в .docx", () =>
+			this.exportFile()
 		);
+
+		this.addRibbonIcon("refresh-ccw", "Перезагрузить", () => {
+			const pluginId = this.manifest.id;
+			new Notice(`Перезагрузка ${pluginId}...`);
+			// @ts-ignore
+			if (app.plugins.plugins[pluginId]) {
+				// @ts-ignore
+				app.plugins.disablePlugin(pluginId);
+				// @ts-ignore
+				setTimeout(() => app.plugins.enablePlugin(pluginId), 100);
+			}
+			new Notice(`${pluginId} перезагружен!`);
+		});
 
 		// Статус бар (правый нижний угол в редакторе)
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText("Страниц: ...");
 
-		// Команда экспорта
+		// Команда
 		this.addCommand({
-			id: "open-modal-complex",
-			name: "Open modal (complex)",
+			id: "export-docx",
+			name: "Экспортировать текущий файл в .docx",
 			callback: () => this.exportFile(),
 		});
 
@@ -83,22 +190,27 @@ export default class DocxPlugin extends Plugin {
 			}
 			markdownView = view;
 		}
-		
+
 		new Notice("Экспорт файла...");
 		this.buildDocxFromMarkdown(markdownView.editor.getValue());
 	}
 
 	async buildDocxFromMarkdown(markdown: string): Promise<void> {
-		let children: FileChild[] = [];
-		markdown.split("\n").forEach((line) => {
+		let promises = markdown.split("\n").map(async (line) => {
 			let level = 0;
 			if (line.startsWith("#")) {
 				level = line.startsWith("# ") ? 1 : 2;
 			}
-			children.push(this.buildParagraph(line, level));
+			return await this.buildParagraph(line, level);
 		});
 
-		const doc = new Document({ sections: [{ children }] });
+		const children = await Promise.all(promises);
+		let { properties, footers, styles } = this;
+
+		const doc = new Document({
+			styles: styles as any,
+			sections: [{ properties: properties as any, footers, children }],
+		});
 
 		Packer.toBlob(doc).then(async (blob) => {
 			const filePath = "exported-document.docx";
@@ -111,36 +223,56 @@ export default class DocxPlugin extends Plugin {
 		});
 	}
 
-	buildParagraph(text: string, level: number): Paragraph {
+	async buildParagraph(text: string, level: number): Promise<Paragraph> {
+		text = text.trim();
 		let data: any = {};
 
 		if (level == 0) {
-			data["children"] = [new TextRun({ text: text.trim() })];
+			let child = null;
+			if (text.startsWith("![[") && text.endsWith("]]")) {
+				const fileName = text.slice(3, -2);
+				try {
+					const buffer = await this.app.vault.adapter.readBinary(
+						fileName
+					);
+					let type = fileName.split(".").pop()?.toLowerCase();
+					child = new ImageRun({
+						data: buffer,
+						type: type as any,
+						transformation: await this.getImageDimensions(fileName),
+					});
+					if (child) {
+						data["style"] = "image";
+					}
+				} catch (e) {
+					new Notice("Не удалось загрузить изображение " + fileName);
+					return new Paragraph("");
+				}
+			}
+			data["children"] = [child || new TextRun({ text })];
 		} else {
-			let heading =
-				level === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
 			data = {
 				text: text.replace(/#/g, "").trim(),
-				heading,
+				style: level === 1 ? "chapter" : "paragraph",
 			};
 		}
 
 		return new Paragraph(data);
 	}
-}
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		let { contentEl } = this;
-		contentEl.setText("Woah!");
-	}
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+	async getImageDimensions(
+		path: string
+	): Promise<{ width: number; height: number }> {
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			img.src = this.app.vault.adapter.getResourcePath(path);
+			img.onload = () => {
+				let width = 400;
+				let scale = width / img.width;
+				let height = img.height * scale;
+				resolve({ width, height });
+			};
+			img.onerror = (err) => reject();
+		});
 	}
 }
