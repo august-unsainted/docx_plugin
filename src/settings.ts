@@ -1,18 +1,18 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import DocxPlugin from "./main";
 
-export interface MyPluginSettings {
+export interface DocxPluginSettings {
 	mySetting: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
+export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	mySetting: 'default'
 }
 
 export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: DocxPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: DocxPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

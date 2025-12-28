@@ -1,84 +1,131 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import {
+	App,
+	Editor,
+	MarkdownView,
+	MenuItem,
+	Modal,
+	Notice,
+	Plugin,
+} from "obsidian";
+import {
+	DEFAULT_SETTINGS,
+	DocxPluginSettings,
+	SampleSettingTab,
+} from "./settings";
+import {
+	Document,
+	Packer,
+	Paragraph,
+	TextRun,
+	HeadingLevel,
+	FileChild,
+} from "docx";
 
-// Remember to rename these classes and interfaces!
-
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class DocxPlugin extends Plugin {
+	settings: DocxPluginSettings;
+	mainIcon: string = "file-input";
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file) => {
+				menu.addItem((item: MenuItem) => {
+					item.setTitle("Экспортировать в .docx")
+						.setIcon(this.mainIcon)
+						.onClick(() => this.exportFile());
+				});
+			})
+		);
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
+		// Боковая панель
+		this.addRibbonIcon(
+			this.mainIcon,
+			"Экспортировать в .docx",
+			() => this.exportFile()
+		);
+
+		// Статус бар (правый нижний угол в редакторе)
 		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
+		statusBarItemEl.setText("Страниц: ...");
 
-		// This adds a simple command that can be triggered anywhere
+		// Команда экспорта
 		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			}
+			id: "open-modal-complex",
+			name: "Open modal (complex)",
+			callback: () => this.exportFile(),
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
+		// Настройки
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
 	}
 
-	onunload() {
-	}
+	onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			(await this.loadData()) as Partial<DocxPluginSettings>
+		);
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	async exportFile(markdownView?: MarkdownView) {
+		if (!markdownView) {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view == null) {
+				new Notice("Нет открытого Markdown файла");
+				return;
+			}
+			markdownView = view;
+		}
+		
+		new Notice("Экспорт файла...");
+		this.buildDocxFromMarkdown(markdownView.editor.getValue());
+	}
+
+	async buildDocxFromMarkdown(markdown: string): Promise<void> {
+		let children: FileChild[] = [];
+		markdown.split("\n").forEach((line) => {
+			let level = 0;
+			if (line.startsWith("#")) {
+				level = line.startsWith("# ") ? 1 : 2;
+			}
+			children.push(this.buildParagraph(line, level));
+		});
+
+		const doc = new Document({ sections: [{ children }] });
+
+		Packer.toBlob(doc).then(async (blob) => {
+			const filePath = "exported-document.docx";
+			this.app.vault.adapter.writeBinary(
+				filePath,
+				await blob.arrayBuffer()
+			);
+			await (this.app as any).openWithDefaultApp(filePath);
+			new Notice("Документ .docx создан!");
+		});
+	}
+
+	buildParagraph(text: string, level: number): Paragraph {
+		let data: any = {};
+
+		if (level == 0) {
+			data["children"] = [new TextRun({ text: text.trim() })];
+		} else {
+			let heading =
+				level === 1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
+			data = {
+				text: text.replace(/#/g, "").trim(),
+				heading,
+			};
+		}
+
+		return new Paragraph(data);
 	}
 }
 
@@ -88,12 +135,12 @@ class SampleModal extends Modal {
 	}
 
 	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
+		let { contentEl } = this;
+		contentEl.setText("Woah!");
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
