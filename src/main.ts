@@ -1,4 +1,4 @@
-import { MarkdownView, MenuItem, Notice, Plugin, TFile } from "obsidian";
+import { MarkdownView, MenuItem, Notice, Plugin, setIcon, setTooltip } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	DocxPluginSettings,
@@ -15,12 +15,8 @@ import {
 	PageNumber,
 	convertMillimetersToTwip,
 	NumberFormat,
-	HorizontalPositionAlign,
-	VerticalPositionRelativeFrom,
-	HorizontalPositionRelativeFrom,
-	VerticalPositionAlign,
+	TableOfContents,
 } from "docx";
-import { get } from "http";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
@@ -45,7 +41,7 @@ export default class DocxPlugin extends Plugin {
 		default: new Footer({
 			children: [
 				new Paragraph({
-					alignment: AlignmentType.CENTER,
+					style: "center",
 					children: [
 						new TextRun({
 							children: ["", PageNumber.CURRENT],
@@ -106,8 +102,8 @@ export default class DocxPlugin extends Plugin {
 				},
 			},
 			{
-				id: "image",
-				name: "Рисунок",
+				id: "center",
+				name: "По центру",
 				basedOn: "normal",
 				next: "normal",
 				quickFormat: true,
@@ -119,6 +115,10 @@ export default class DocxPlugin extends Plugin {
 				},
 			},
 		],
+	};
+
+	features: {
+		updateFields: true;
 	};
 
 	async onload() {
@@ -143,18 +143,30 @@ export default class DocxPlugin extends Plugin {
 			const pluginId = this.manifest.id;
 			new Notice(`Перезагрузка ${pluginId}...`);
 			// @ts-ignore
-			if (app.plugins.plugins[pluginId]) {
+			if (this.app.plugins.plugins[pluginId]) {
 				// @ts-ignore
-				app.plugins.disablePlugin(pluginId);
+				this.app.plugins.disablePlugin(pluginId);
 				// @ts-ignore
-				setTimeout(() => app.plugins.enablePlugin(pluginId), 100);
+				setTimeout(() => this.app.plugins.enablePlugin(pluginId), 100);
 			}
 			new Notice(`${pluginId} перезагружен!`);
 		});
 
 		// Статус бар (правый нижний угол в редакторе)
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText("Страниц: ...");
+		const pagesCount = this.addStatusBarItem();
+		pagesCount.setText("Страниц: ...");
+		const calculatePages = this.addStatusBarItem();
+		setIcon(calculatePages, this.mainIcon);
+		setTooltip(calculatePages, "Пересчитать количество страниц");
+		calculatePages.onclick = () => {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view == null) {
+				new Notice("Нет открытого Markdown файла");
+				return;
+			}
+			let pages = Math.round(view.editor.getValue().length / 1000);
+			pagesCount.setText(`Страниц: ${pages}`);
+		};
 
 		// Команда
 		this.addCommand({
@@ -196,20 +208,45 @@ export default class DocxPlugin extends Plugin {
 	}
 
 	async buildDocxFromMarkdown(markdown: string): Promise<void> {
+		let pageBreakBefore = true;
+		let alignCenter = false;
 		let promises = markdown.split("\n").map(async (line) => {
+			line = line.trim();
+			if (line === "") return;
+
+			if (line === "---") {
+				pageBreakBefore = true;
+				return;
+			}
+
 			let level = 0;
 			if (line.startsWith("#")) {
 				level = line.startsWith("# ") ? 1 : 2;
 			}
-			return await this.buildParagraph(line, level);
+			let paragraph = this.buildParagraph(line, level, pageBreakBefore, alignCenter);
+			alignCenter = this.isImage(line);
+			pageBreakBefore = false;
+			return paragraph;
 		});
 
-		const children = await Promise.all(promises);
-		let { properties, footers, styles } = this;
+		const children = [
+			new Paragraph({
+				style: "center",
+				pageBreakBefore: true,
+				text: "Содержание",
+			}),
+			new TableOfContents("Содержание", {
+				hyperlink: true,
+				headingStyleRange: "1-2",
+			}),
+			...(await Promise.all(promises)),
+		];
+		let { properties, footers, styles, features } = this;
 
 		const doc = new Document({
 			styles: styles as any,
-			sections: [{ properties: properties as any, footers, children }],
+			features,
+			sections: [{ properties: properties as any, footers, children: children as any }],
 		});
 
 		Packer.toBlob(doc).then(async (blob) => {
@@ -223,33 +260,14 @@ export default class DocxPlugin extends Plugin {
 		});
 	}
 
-	async buildParagraph(text: string, level: number): Promise<Paragraph> {
+	async buildParagraph(text: string, level: number, pageBreakBefore: boolean, alignCenter: boolean): Promise<Paragraph> {
 		text = text.trim();
 		let data: any = {};
 
 		if (level == 0) {
-			let child = null;
-			if (text.startsWith("![[") && text.endsWith("]]")) {
-				const fileName = text.slice(3, -2);
-				try {
-					const buffer = await this.app.vault.adapter.readBinary(
-						fileName
-					);
-					let type = fileName.split(".").pop()?.toLowerCase();
-					child = new ImageRun({
-						data: buffer,
-						type: type as any,
-						transformation: await this.getImageDimensions(fileName),
-					});
-					if (child) {
-						data["style"] = "image";
-					}
-				} catch (e) {
-					new Notice("Не удалось загрузить изображение " + fileName);
-					return new Paragraph("");
-				}
-			}
-			data["children"] = [child || new TextRun({ text })];
+			let child = await this.renderImage(text);
+			data['children'] = [child || new TextRun({ text })];
+			if (alignCenter || child) data.style = "center";
 		} else {
 			data = {
 				text: text.replace(/#/g, "").trim(),
@@ -257,7 +275,27 @@ export default class DocxPlugin extends Plugin {
 			};
 		}
 
+		if (pageBreakBefore) data.pageBreakBefore = true;
+
 		return new Paragraph(data);
+	}
+
+	async renderImage(text: string) {
+		if (!this.isImage(text)) return null;
+		const fileName = text.slice(3, -2);
+		const buffer = await this.app.vault.adapter.readBinary(fileName);
+
+		try {
+			let type = fileName.split(".").pop()?.toLowerCase();
+			return new ImageRun({
+				data: buffer,
+				type: type as any,
+				transformation: await this.getImageDimensions(fileName),
+			});
+		} catch (e) {
+			new Notice("Не удалось загрузить изображение " + fileName);
+			return new Paragraph("");
+		}
 	}
 
 	async getImageDimensions(
@@ -274,5 +312,9 @@ export default class DocxPlugin extends Plugin {
 			};
 			img.onerror = (err) => reject();
 		});
+	}
+
+	isImage(line: string): boolean {
+		return line.startsWith("![[") && line.endsWith("]]");
 	}
 }
