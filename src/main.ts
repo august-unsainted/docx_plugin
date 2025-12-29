@@ -1,4 +1,11 @@
-import { MarkdownView, MenuItem, Notice, Plugin, setIcon, setTooltip } from "obsidian";
+import {
+	MarkdownView,
+	MenuItem,
+	Notice,
+	Plugin,
+	setIcon,
+	setTooltip,
+} from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	DocxPluginSettings,
@@ -159,11 +166,8 @@ export default class DocxPlugin extends Plugin {
 		setIcon(calculatePages, this.mainIcon);
 		setTooltip(calculatePages, "Пересчитать количество страниц");
 		calculatePages.onclick = () => {
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view == null) {
-				new Notice("Нет открытого Markdown файла");
-				return;
-			}
+			const view = this.checkView();
+			if (view == null) return;
 			let pages = Math.round(view.editor.getValue().length / 1000);
 			pagesCount.setText(`Страниц: ${pages}`);
 		};
@@ -173,6 +177,24 @@ export default class DocxPlugin extends Plugin {
 			id: "export-docx",
 			name: "Экспортировать текущий файл в .docx",
 			callback: () => this.exportFile(),
+			hotkeys: [{ modifiers: ["Shift"], key: "enter" }],
+		});
+
+		this.addCommand({
+			id: "page-break",
+			name: "Разрыв страницы",
+			checkCallback: (checking: boolean) => {
+				if (checking) return false;
+				const view = this.checkView();
+				if (view == null) return false;
+				const editor = view.editor;
+				const cursor = editor.getCursor();
+				editor.replaceRange("\n\n---\n", cursor);
+				const newPos = { line: cursor.line + 3, ch: 0 };
+				editor.setCursor(newPos);
+				return false;
+			},
+			hotkeys: [{ modifiers: ["Shift"], key: "enter" }],
 		});
 
 		// Настройки
@@ -195,11 +217,8 @@ export default class DocxPlugin extends Plugin {
 
 	async exportFile(markdownView?: MarkdownView) {
 		if (!markdownView) {
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view == null) {
-				new Notice("Нет открытого Markdown файла");
-				return;
-			}
+			const view = this.checkView();
+			if (view == null) return;
 			markdownView = view;
 		}
 
@@ -210,7 +229,8 @@ export default class DocxPlugin extends Plugin {
 	async buildDocxFromMarkdown(markdown: string): Promise<void> {
 		let pageBreakBefore = true;
 		let alignCenter = false;
-		let chapterNumber = 0, paragraphNumber = 0;
+		let chapterNumber = 0,
+			paragraphNumber = 0;
 		let promises = markdown.split("\n").map(async (line) => {
 			line = line.trim();
 			if (line === "") return;
@@ -222,8 +242,8 @@ export default class DocxPlugin extends Plugin {
 
 			let level = 0;
 			if (line.startsWith("#")) {
-				let isChapter = line.startsWith("# "); 
-				line = line.replace(/#/g, "").trim()
+				let isChapter = line.startsWith("# ");
+				line = line.replace(/#/g, "").trim();
 				let counter;
 				if (isChapter) {
 					paragraphNumber = 0;
@@ -234,7 +254,12 @@ export default class DocxPlugin extends Plugin {
 				line = `${counter}. ${line}`;
 				level = isChapter ? 1 : 2;
 			}
-			let paragraph = this.buildParagraph(line, level, pageBreakBefore, alignCenter);
+			let paragraph = this.buildParagraph(
+				line,
+				level,
+				pageBreakBefore,
+				alignCenter
+			);
 			alignCenter = this.isImage(line);
 			pageBreakBefore = false;
 			return paragraph;
@@ -257,7 +282,13 @@ export default class DocxPlugin extends Plugin {
 		const doc = new Document({
 			styles: styles as any,
 			features,
-			sections: [{ properties: properties as any, footers, children: children as any }],
+			sections: [
+				{
+					properties: properties as any,
+					footers,
+					children: children as any,
+				},
+			],
 		});
 
 		Packer.toBlob(doc).then(async (blob) => {
@@ -271,13 +302,18 @@ export default class DocxPlugin extends Plugin {
 		});
 	}
 
-	async buildParagraph(text: string, level: number, pageBreakBefore: boolean, alignCenter: boolean): Promise<Paragraph> {
+	async buildParagraph(
+		text: string,
+		level: number,
+		pageBreakBefore: boolean,
+		alignCenter: boolean
+	): Promise<Paragraph> {
 		text = text.trim();
 		let data: any = {};
 
 		if (level == 0) {
 			let child = await this.renderImage(text);
-			data['children'] = [child || new TextRun({ text })];
+			data["children"] = [child || new TextRun({ text })];
 			if (alignCenter || child) data.style = "center";
 		} else {
 			data = {
@@ -289,6 +325,15 @@ export default class DocxPlugin extends Plugin {
 		if (pageBreakBefore) data.pageBreakBefore = true;
 
 		return new Paragraph(data);
+	}
+
+	checkView() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view == null) {
+			new Notice("Нет открытого Markdown файла");
+			return null;
+		}
+		return view;
 	}
 
 	async renderImage(text: string) {
