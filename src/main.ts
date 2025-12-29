@@ -173,6 +173,30 @@ export default class DocxPlugin extends Plugin {
 			id: "export-docx",
 			name: "Экспортировать текущий файл в .docx",
 			callback: () => this.exportFile(),
+			hotkeys: [{ modifiers: ['Shift'], key: 'enter' }],
+		});
+
+		this.addCommand({
+			id: "page-break",
+			name: "Разрыв страницы",
+			checkCallback: (checking: boolean) => {
+				if (checking) return false;
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (view == null) {
+					new Notice("Нет открытого Markdown файла");
+					return false;
+				}
+				const editor = view.editor;
+				const cursor = editor.getCursor();
+				editor.replaceRange("\n\n---\n", cursor);
+				const newPos = {
+					line: cursor.line + 3,
+					ch: 0
+				};
+				editor.setCursor(newPos);
+				return false;
+			},
+			hotkeys: [{ modifiers: ['Shift'], key: 'enter' }],
 		});
 
 		// Настройки
