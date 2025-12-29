@@ -210,6 +210,7 @@ export default class DocxPlugin extends Plugin {
 	async buildDocxFromMarkdown(markdown: string): Promise<void> {
 		let pageBreakBefore = true;
 		let alignCenter = false;
+		let chapterNumber = 0, paragraphNumber = 0;
 		let promises = markdown.split("\n").map(async (line) => {
 			line = line.trim();
 			if (line === "") return;
@@ -221,7 +222,17 @@ export default class DocxPlugin extends Plugin {
 
 			let level = 0;
 			if (line.startsWith("#")) {
-				level = line.startsWith("# ") ? 1 : 2;
+				let isChapter = line.startsWith("# "); 
+				line = line.replace(/#/g, "").trim()
+				let counter;
+				if (isChapter) {
+					paragraphNumber = 0;
+					counter = ++chapterNumber;
+				} else {
+					counter = `${chapterNumber}.${++paragraphNumber}`;
+				}
+				line = `${counter}. ${line}`;
+				level = isChapter ? 1 : 2;
 			}
 			let paragraph = this.buildParagraph(line, level, pageBreakBefore, alignCenter);
 			alignCenter = this.isImage(line);
@@ -270,7 +281,7 @@ export default class DocxPlugin extends Plugin {
 			if (alignCenter || child) data.style = "center";
 		} else {
 			data = {
-				text: text.replace(/#/g, "").trim(),
+				text,
 				style: level === 1 ? "chapter" : "paragraph",
 			};
 		}
