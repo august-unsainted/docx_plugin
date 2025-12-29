@@ -227,12 +227,13 @@ export default class DocxPlugin extends Plugin {
 	}
 
 	async buildDocxFromMarkdown(markdown: string): Promise<void> {
-		let pageBreakBefore = true;
+		let pageBreakBefore = false;
 		let alignCenter = false;
 		let chapterNumber = 0,
-			paragraphNumber = 0;
+			paragraphNumber = 0,
+			pictureNumber = 0;
 		let promises = markdown.split("\n").map(async (line) => {
-			line = line.trim();
+			line = line.trim().replace('{img}', `(рис. ${pictureNumber + 1})`);
 			if (line === "") return;
 
 			if (line === "---") {
@@ -248,12 +249,16 @@ export default class DocxPlugin extends Plugin {
 				if (isChapter) {
 					paragraphNumber = 0;
 					counter = ++chapterNumber;
+					pageBreakBefore = true;
 				} else {
 					counter = `${chapterNumber}.${++paragraphNumber}`;
 				}
 				line = `${counter}. ${line}`;
 				level = isChapter ? 1 : 2;
 			}
+
+			if (alignCenter) line = `Рисунок ${++pictureNumber}. ${line}`;
+
 			let paragraph = this.buildParagraph(
 				line,
 				level,
