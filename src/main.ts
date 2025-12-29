@@ -24,6 +24,7 @@ import {
 	NumberFormat,
 	TableOfContents,
 } from "docx";
+import * as fs from "fs";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
@@ -223,17 +224,24 @@ export default class DocxPlugin extends Plugin {
 		}
 
 		new Notice("Экспорт файла...");
-		this.buildDocxFromMarkdown(markdownView.editor.getValue());
+		console.log();
+		this.buildDocxFromMarkdown(
+			markdownView.editor.getValue(),
+			markdownView.file?.basename
+		);
 	}
 
-	async buildDocxFromMarkdown(markdown: string): Promise<void> {
+	async buildDocxFromMarkdown(
+		markdown: string,
+		fileName?: string
+	): Promise<void> {
 		let pageBreakBefore = false;
 		let alignCenter = false;
 		let chapterNumber = 0,
 			paragraphNumber = 0,
 			pictureNumber = 0;
 		let promises = markdown.split("\n").map(async (line) => {
-			line = line.trim().replace('{img}', `(рис. ${pictureNumber + 1})`);
+			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
 			if (line === "") return;
 
 			if (line === "---") {
@@ -296,14 +304,15 @@ export default class DocxPlugin extends Plugin {
 			],
 		});
 
+		const filePath = (fileName || "document") + ".docx";
+
 		Packer.toBlob(doc).then(async (blob) => {
-			const filePath = "exported-document.docx";
 			this.app.vault.adapter.writeBinary(
 				filePath,
 				await blob.arrayBuffer()
 			);
 			await (this.app as any).openWithDefaultApp(filePath);
-			new Notice("Документ .docx создан!");
+			new Notice(`Документ «${fileName}» создан!`);
 		});
 	}
 
