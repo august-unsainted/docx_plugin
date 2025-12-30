@@ -224,7 +224,6 @@ export default class DocxPlugin extends Plugin {
 			id: "export-docx",
 			name: "Экспортировать текущий файл в .docx",
 			callback: () => this.exportFile(),
-			hotkeys: [{ modifiers: ["Shift"], key: "enter" }],
 		});
 
 		this.addCommand({
