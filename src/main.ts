@@ -172,6 +172,8 @@ export default class DocxPlugin extends Plugin {
 	features: {
 		updateFields: true;
 	};
+	
+	exclusions = ["введение", "заключение", "список использованных источников", "содержание"];
 
 	async onload() {
 		await this.loadSettings();
@@ -301,13 +303,13 @@ export default class DocxPlugin extends Plugin {
 				return this.buildNumbering(line, numberedLists.length);
 			}
 
-			if (numberedLists[-1]?.length != 0) {
-				numberedLists.push([]);
-			}
-
 			if (line.startsWith("- ")) {
 				line = line.replace("- ", "");
 				return this.buildNumbering(line, -1);
+			}
+
+			if (numberedLists[-1]?.length != 0) {
+				numberedLists.push([]);
 			}
 
 			let level = 0;
@@ -315,15 +317,20 @@ export default class DocxPlugin extends Plugin {
 				let isChapter = line.startsWith("# ");
 				line = line.replace(/#/g, "").trim();
 				let counter;
-				if (isChapter) {
-					paragraphNumber = 0;
-					counter = ++chapterNumber;
+				if (this.exclusions.includes(line.toLowerCase())) {
 					pageBreakBefore = true;
+					level = 1;
 				} else {
-					counter = `${chapterNumber}.${++paragraphNumber}`;
+					if (isChapter) {
+						paragraphNumber = 0;
+						counter = ++chapterNumber;
+						pageBreakBefore = true;
+					} else {
+						counter = `${chapterNumber}.${++paragraphNumber}`;
+					}
+					line = `${counter}. ${line}`;
+					level = isChapter ? 1 : 2;
 				}
-				line = `${counter}. ${line}`;
-				level = isChapter ? 1 : 2;
 			}
 
 			line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {
