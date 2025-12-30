@@ -1,11 +1,11 @@
 {
-	"id": "docx-plugin",
-	"name": "Docx Plugin",
+	"id": "gostify-plugin",
+	"name": "GOSTify",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Exports markdown files to .docx format.",
+	"description": "Автоматическое оформление курсовых и дипломных работ по стандартам ГОСТ",
 	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
+	"authorUrl": "t.me/mhidt",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
