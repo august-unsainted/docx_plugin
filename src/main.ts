@@ -143,14 +143,6 @@ export default class DocxPlugin extends Plugin {
 						format: LevelFormat.DECIMAL,
 						text: "%1.",
 						alignment: AlignmentType.START,
-						style: {
-							paragraph: {
-								indent: {
-									left: convertMillimetersToTwip(12.5),
-									hanging: convertMillimetersToTwip(12.5),
-								},
-							},
-						},
 					},
 				],
 				reference: "base-numbering",
@@ -273,7 +265,8 @@ export default class DocxPlugin extends Plugin {
 		let chapterNumber = 0,
 			paragraphNumber = 0,
 			pictureNumber = 0,
-			sources: string[] = [];
+			sources: Promise<string>[] = [],
+			numberedLists: string[][] = [[]];
 		let promises = markdown.split("\n").map(async (line) => {
 			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
 			if (line === "") return;
@@ -281,6 +274,14 @@ export default class DocxPlugin extends Plugin {
 			if (line === "---") {
 				pageBreakBefore = true;
 				return;
+			}
+
+			if (line.match(/\d+?\. .+/)) {
+				line = line.split('. ', 2)[1] || "";
+				numberedLists[-1]?.push(line);
+				return this.buildNumbering(line, numberedLists.length);
+			} else if (numberedLists[-1]?.length != 0) {
+				numberedLists.push([]);
 			}
 
 			let level = 0;
@@ -300,7 +301,7 @@ export default class DocxPlugin extends Plugin {
 			}
 
 			line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {
-				sources.push(`${p2}`);
+				sources.push(this.formatSource(p2));
 				return `${p1} [${sources.length}]`;
 			});
 
@@ -310,7 +311,7 @@ export default class DocxPlugin extends Plugin {
 				line,
 				level,
 				pageBreakBefore,
-				alignCenter
+				alignCenter,
 			);
 			alignCenter = this.isImage(line);
 			pageBreakBefore = false;
@@ -359,16 +360,16 @@ export default class DocxPlugin extends Plugin {
 
 	async buildParagraph(
 		text: string,
-		level: number,
-		pageBreakBefore: boolean,
-		alignCenter: boolean
+		level: number = 0,
+		pageBreakBefore: boolean = false,
+		alignCenter: boolean = false,
 	): Promise<Paragraph> {
 		text = text.trim();
 		let data: any = {};
 
 		if (level == 0) {
 			let child = await this.renderImage(text);
-			data["children"] = [child || new TextRun({ text })];
+			data.children = [child || new TextRun({ text })];
 			data.style = "standard";
 			if (alignCenter || child) data.style = "center";
 		} else {
@@ -383,23 +384,23 @@ export default class DocxPlugin extends Plugin {
 		return new Paragraph(data);
 	}
 
-	async buildSources(sources: string[]): Promise<Paragraph[]> {
-		let paragraphs = sources.map(
-			async (text) =>
-				new Paragraph({
-					text: await this.formatSource(text),
-					numbering: {
-						reference: "base-numbering",
-						level: 0,
-					},
-				})
-		);
-		let header = new Paragraph({
-			pageBreakBefore: true,
-			text: "Список литературы",
-			style: "chapter",
+	async buildSources(sources: Promise<string>[]): Promise<Paragraph[]> {
+		let items = await Promise.all(sources);
+		let paragraphs = items.map(item => this.buildNumbering(item, 0));
+		let header = await this.buildParagraph("Список литературы", 1, true);
+		return [header, ...paragraphs];
+	}
+
+	buildNumbering(text: string, instance: number): Paragraph {
+		return new Paragraph({
+			text,
+			numbering: {
+				reference: "base-numbering",
+				level: 0,
+				instance,
+			},
+			style: instance === 0 ? "normal" : "standard",
 		});
-		return [header, ...(await Promise.all(paragraphs))];
 	}
 
 	async formatSource(url: string): Promise<string> {
