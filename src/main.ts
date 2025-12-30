@@ -119,6 +119,21 @@ export default class DocxPlugin extends Plugin {
 				},
 			},
 			{
+				id: "code",
+				name: "Код",
+				basedOn: "normal",
+				next: "normal",
+				quickFormat: true,
+				paragraph: {
+					indent: {
+						firstLine: 0,
+					},
+					spacing: {
+						line: 240,
+					},
+				},
+			},
+			{
 				id: "center",
 				name: "По центру",
 				basedOn: "normal",
@@ -172,8 +187,13 @@ export default class DocxPlugin extends Plugin {
 	features: {
 		updateFields: true;
 	};
-	
-	exclusions = ["введение", "заключение", "список использованных источников", "содержание"];
+
+	exclusions = [
+		"введение",
+		"заключение",
+		"список использованных источников",
+		"содержание",
+	];
 
 	async onload() {
 		await this.loadSettings();
@@ -280,17 +300,27 @@ export default class DocxPlugin extends Plugin {
 		markdown: string,
 		fileName?: string
 	): Promise<void> {
-		let pageBreakBefore = false;
-		let alignCenter = false;
-		let chapterNumber = 0,
+		let pageBreakBefore = false,
+			alignCenter = false,
+			codeStyle = false,
+			chapterNumber = 0,
 			paragraphNumber = 0,
 			pictureNumber = 0,
 			sources: Promise<string>[] = [],
 			numberedLists: string[][] = [[]];
 		let promises = markdown.split("\n").map(async (line) => {
-			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
-			if (line === "") return;
+			if (line.startsWith("```")) {
+				codeStyle = !codeStyle;
+				return;
+			}
 
+			if (!codeStyle) {
+				line = line
+					.trim()
+					.replace("{img}", `(рис. ${pictureNumber + 1})`);
+			}
+
+			if (line === "") return;
 			if (line === "---") {
 				pageBreakBefore = true;
 				return;
@@ -343,7 +373,8 @@ export default class DocxPlugin extends Plugin {
 				line,
 				level,
 				pageBreakBefore,
-				alignCenter
+				alignCenter,
+				codeStyle
 			);
 			alignCenter = this.isImage(line);
 			pageBreakBefore = false;
@@ -394,16 +425,16 @@ export default class DocxPlugin extends Plugin {
 		text: string,
 		level: number = 0,
 		pageBreakBefore: boolean = false,
-		alignCenter: boolean = false
+		alignCenter: boolean = false,
+		codeStyle: boolean = false
 	): Promise<Paragraph> {
-		text = text.trim();
+		if (!codeStyle) text = text.trim();
 		let data: any = {};
 
 		if (level == 0) {
 			let child = await this.renderImage(text);
 			data.children = [child || new TextRun({ text })];
-			data.style = "standard";
-			if (alignCenter || child) data.style = "center";
+			data.style = alignCenter || child ? "center" : "standard";
 		} else {
 			data = {
 				text,
@@ -411,6 +442,7 @@ export default class DocxPlugin extends Plugin {
 			};
 		}
 
+		if (codeStyle) data.style = "code";
 		if (pageBreakBefore) data.pageBreakBefore = true;
 
 		return new Paragraph(data);
