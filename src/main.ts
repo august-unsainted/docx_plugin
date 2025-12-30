@@ -137,6 +137,7 @@ export default class DocxPlugin extends Plugin {
 	numbering = {
 		config: [
 			{
+				reference: "base-numbering",
 				levels: [
 					{
 						level: 0,
@@ -145,7 +146,25 @@ export default class DocxPlugin extends Plugin {
 						alignment: AlignmentType.START,
 					},
 				],
-				reference: "base-numbering",
+			},
+			{
+				reference: "bullet-points",
+				levels: [
+					{
+						level: 0,
+						format: LevelFormat.BULLET,
+						text: "\u00B7", // Wingdings bullet (копируйте из Word)
+
+						// font: "Symbol",
+						// text: "\u2022",
+						alignment: AlignmentType.START,
+						style: {
+							run: {
+								font: "Symbol",
+							},
+						},
+					},
+				],
 			},
 		],
 	};
@@ -277,11 +296,18 @@ export default class DocxPlugin extends Plugin {
 			}
 
 			if (line.match(/\d+?\. .+/)) {
-				line = line.split('. ', 2)[1] || "";
+				line = line.split(". ", 2)[1] || "";
 				numberedLists[-1]?.push(line);
 				return this.buildNumbering(line, numberedLists.length);
-			} else if (numberedLists[-1]?.length != 0) {
+			}
+
+			if (numberedLists[-1]?.length != 0) {
 				numberedLists.push([]);
+			}
+
+			if (line.startsWith("- ")) {
+				line = line.replace("- ", "");
+				return this.buildNumbering(line, -1);
 			}
 
 			let level = 0;
@@ -311,7 +337,7 @@ export default class DocxPlugin extends Plugin {
 				line,
 				level,
 				pageBreakBefore,
-				alignCenter,
+				alignCenter
 			);
 			alignCenter = this.isImage(line);
 			pageBreakBefore = false;
@@ -362,7 +388,7 @@ export default class DocxPlugin extends Plugin {
 		text: string,
 		level: number = 0,
 		pageBreakBefore: boolean = false,
-		alignCenter: boolean = false,
+		alignCenter: boolean = false
 	): Promise<Paragraph> {
 		text = text.trim();
 		let data: any = {};
@@ -386,19 +412,22 @@ export default class DocxPlugin extends Plugin {
 
 	async buildSources(sources: Promise<string>[]): Promise<Paragraph[]> {
 		let items = await Promise.all(sources);
-		let paragraphs = items.map(item => this.buildNumbering(item, 0));
+		let paragraphs = items.map((item) => this.buildNumbering(item, 0));
 		let header = await this.buildParagraph("Список литературы", 1, true);
 		return [header, ...paragraphs];
 	}
 
 	buildNumbering(text: string, instance: number): Paragraph {
+		let isBullets = instance < 0;
+		let numbering = {
+			level: 0,
+			reference: isBullets ? "bullet-points" : "base-numbering",
+			instance,
+		};
+
 		return new Paragraph({
 			text,
-			numbering: {
-				reference: "base-numbering",
-				level: 0,
-				instance,
-			},
+			numbering,
 			style: instance === 0 ? "normal" : "standard",
 		});
 	}
