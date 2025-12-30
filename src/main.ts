@@ -73,9 +73,6 @@ export default class DocxPlugin extends Plugin {
 				},
 				paragraph: {
 					alignment: AlignmentType.JUSTIFIED,
-					indent: {
-						firstLine: convertMillimetersToTwip(12.5),
-					},
 					spacing: {
 						line: 360,
 					},
@@ -83,6 +80,17 @@ export default class DocxPlugin extends Plugin {
 			},
 		},
 		paragraphStyles: [
+			{
+				id: "standard",
+				name: "Стандартный",
+				basedOn: "Normal",
+				quickFormat: true,
+				paragraph: {
+					indent: {
+						firstLine: convertMillimetersToTwip(12.5),
+					},
+				},
+			},
 			{
 				id: "chapter",
 				name: "Глава",
@@ -313,9 +321,9 @@ export default class DocxPlugin extends Plugin {
 			new Paragraph({
 				style: "center",
 				pageBreakBefore: true,
-				text: "Содержание",
+				text: "Оглавление",
 			}),
-			new TableOfContents("Содержание", {
+			new TableOfContents("Оглавление", {
 				hyperlink: true,
 				headingStyleRange: "1-2",
 			}),
@@ -361,6 +369,7 @@ export default class DocxPlugin extends Plugin {
 		if (level == 0) {
 			let child = await this.renderImage(text);
 			data["children"] = [child || new TextRun({ text })];
+			data.style = "standard";
 			if (alignCenter || child) data.style = "center";
 		} else {
 			data = {
