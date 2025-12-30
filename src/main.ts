@@ -5,6 +5,7 @@ import {
 	Plugin,
 	setIcon,
 	setTooltip,
+	requestUrl,
 } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
@@ -23,8 +24,8 @@ import {
 	convertMillimetersToTwip,
 	NumberFormat,
 	TableOfContents,
+	LevelFormat,
 } from "docx";
-import * as fs from "fs";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
@@ -121,6 +122,30 @@ export default class DocxPlugin extends Plugin {
 						firstLine: 0,
 					},
 				},
+			},
+		],
+	};
+
+	numbering = {
+		config: [
+			{
+				levels: [
+					{
+						level: 0,
+						format: LevelFormat.DECIMAL,
+						text: "%1.",
+						alignment: AlignmentType.START,
+						style: {
+							paragraph: {
+								indent: {
+									left: convertMillimetersToTwip(12.5),
+									hanging: convertMillimetersToTwip(12.5),
+								},
+							},
+						},
+					},
+				],
+				reference: "base-numbering",
 			},
 		],
 	};
@@ -239,7 +264,8 @@ export default class DocxPlugin extends Plugin {
 		let alignCenter = false;
 		let chapterNumber = 0,
 			paragraphNumber = 0,
-			pictureNumber = 0;
+			pictureNumber = 0,
+			sources: string[] = [];
 		let promises = markdown.split("\n").map(async (line) => {
 			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
 			if (line === "") return;
@@ -265,6 +291,11 @@ export default class DocxPlugin extends Plugin {
 				level = isChapter ? 1 : 2;
 			}
 
+			line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {
+				sources.push(`${p2}`);
+				return `${p1} [${sources.length}]`;
+			});
+
 			if (alignCenter) line = `Рисунок ${++pictureNumber}. ${line}`;
 
 			let paragraph = this.buildParagraph(
@@ -289,10 +320,12 @@ export default class DocxPlugin extends Plugin {
 				headingStyleRange: "1-2",
 			}),
 			...(await Promise.all(promises)),
+			...(await this.buildSources(sources)),
 		];
-		let { properties, footers, styles, features } = this;
+		let { properties, footers, styles, features, numbering } = this;
 
 		const doc = new Document({
+			numbering: numbering as any,
 			styles: styles as any,
 			features,
 			sections: [
@@ -339,6 +372,39 @@ export default class DocxPlugin extends Plugin {
 		if (pageBreakBefore) data.pageBreakBefore = true;
 
 		return new Paragraph(data);
+	}
+
+	async buildSources(sources: string[]): Promise<Paragraph[]> {
+		let paragraphs = sources.map(
+			async (text) =>
+				new Paragraph({
+					text: await this.formatSource(text),
+					numbering: {
+						reference: "base-numbering",
+						level: 0,
+					},
+				})
+		);
+		let header = new Paragraph({
+			pageBreakBefore: true,
+			text: "Список литературы",
+			style: "chapter",
+		});
+		return [header, ...(await Promise.all(paragraphs))];
+	}
+
+	async formatSource(url: string): Promise<string> {
+		try {
+			const { text } = await requestUrl(url);
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(text, "text/html");
+			const title = doc.querySelector("title")?.innerText;
+			if (!title) return "Заголовок не найден";
+			return `${title} [Электронный ресурс]. – Режим доступа: ${url} (дата обращения: ${new Date().toLocaleDateString()}).`;
+		} catch (error) {
+			console.error("Ошибка при получении страницы:", error);
+			return "Заголовок не найден";
+		}
 	}
 
 	checkView() {
