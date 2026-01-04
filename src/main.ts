@@ -26,6 +26,13 @@ import {
 	TableOfContents,
 	LevelFormat,
 } from "docx";
+import { EditorView, ViewUpdate } from "@codemirror/view";
+import {
+	EditorSelection,
+	SelectionRange,
+	Transaction,
+	TransactionSpec,
+} from "@codemirror/state";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
@@ -280,6 +287,24 @@ export default class DocxPlugin extends Plugin {
 
 		// Настройки
 		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.registerEditorExtension(
+			EditorView.updateListener.of((update) => {
+				update.transactions.forEach((transaction) => {
+					const eventType = transaction.annotation(
+						Transaction.userEvent
+					);
+					if (eventType !== "input.type") return;
+					let changeInfo;
+					transaction.changes.iterChanges(
+						(_fromA, _toA, from, to, change) => {
+							if (change.toString().includes('"'))
+								changeInfo = [from, to, change];
+						}
+					);
+					if (changeInfo) this.handleUpdate(update, changeInfo);
+				});
+			})
+		);
 	}
 
 	onunload() {}
@@ -304,7 +329,6 @@ export default class DocxPlugin extends Plugin {
 		}
 
 		new Notice("Экспорт файла...");
-		console.log();
 		this.buildDocxFromMarkdown(
 			markdownView.editor.getValue(),
 			markdownView.file?.basename
@@ -463,6 +487,43 @@ export default class DocxPlugin extends Plugin {
 		return new Paragraph(data);
 	}
 
+	handleUpdate(
+		update: ViewUpdate,
+		params: [fromB: number, toB: number, inserted: Text]
+	) {
+		let [from, to, change] = params;
+		if (!change.toString().includes('"')) return;
+		let ranges = update.view.state.selection.ranges;
+		if (ranges.length === 1 && ranges[0]?.empty) {
+			update.view.dispatch(this.getCursorTransaction(update, from, to));
+			return;
+		}
+		let transactions: Transaction[] = [];
+		let selectionRanges = [];
+		for (let range of ranges) {
+			if (range.from > range.to) return;
+			if (range.empty) {
+				transactions.push(this.getCursorTransaction(update, from, to));
+				continue;
+			}
+			transactions.push(this.getRangeTransaction(update, range));
+			console.log(
+				`head: ${range.head}, anchor: ${range.anchor}, from: ${range.from}, to: ${range.to}`
+			);
+			selectionRanges.push(
+				range.head === range.from
+					? EditorSelection.range(range.to, range.from)
+					: EditorSelection.range(range.from, range.to)
+			);
+		}
+		update.view.dispatch(...transactions);
+		update.view.dispatch(
+			this.getTransaction(update, {
+				selection: EditorSelection.create([...selectionRanges]),
+			})
+		);
+	}
+
 	async buildSources(sources: Promise<string>[]): Promise<Paragraph[]> {
 		let items = await Promise.all(sources);
 		let paragraphs = items.map((item) => this.buildNumbering(item, 0));
@@ -558,6 +619,41 @@ export default class DocxPlugin extends Plugin {
 			default:
 				return this.capitalize(text);
 		}
+	}
+
+	getTransaction(
+		update: ViewUpdate,
+		updateData: TransactionSpec
+	): Transaction {
+		return update.view.state.update(updateData);
+	}
+
+	getCursorTransaction(
+		update: ViewUpdate,
+		from: number,
+		to: number
+	): Transaction {
+		let updateData = {
+			changes: {
+				from: from,
+				to: to,
+				insert: "«»",
+			},
+			selection: EditorSelection.cursor(from + 1),
+		};
+		return this.getTransaction(update, updateData);
+	}
+
+	getRangeTransaction(update: ViewUpdate, range: SelectionRange) {
+		let text = update.view.state.doc.sliceString(range.from, range.to);
+		let transaction = {
+			changes: {
+				from: range.from - 1,
+				to: range.to + 1,
+				insert: `«${text}»`,
+			},
+		};
+		return this.getTransaction(update, transaction);
 	}
 
 	capitalize(text: string): string {
