@@ -168,10 +168,7 @@ export default class DocxPlugin extends Plugin {
 					{
 						level: 0,
 						format: LevelFormat.BULLET,
-						text: "\u00B7", // Wingdings bullet (копируйте из Word)
-
-						// font: "Symbol",
-						// text: "\u2022",
+						text: "\u00B7",
 						alignment: AlignmentType.START,
 						style: {
 							run: {
@@ -251,17 +248,34 @@ export default class DocxPlugin extends Plugin {
 			id: "page-break",
 			name: "Разрыв страницы",
 			checkCallback: (checking: boolean) => {
-				if (checking) return false;
-				const view = this.checkView();
-				if (view == null) return false;
-				const editor = view.editor;
+				const editor = this.getEditor(checking);
+				if (!editor) return false;
 				const cursor = editor.getCursor();
 				editor.replaceRange("\n\n---\n", cursor);
 				const newPos = { line: cursor.line + 3, ch: 0 };
 				editor.setCursor(newPos);
-				return false;
+				return true;
 			},
 			hotkeys: [{ modifiers: ["Shift"], key: "enter" }],
+		});
+
+		this.addCommand({
+			id: "change-register",
+			name: "Изменить регистр",
+			checkCallback: (checking: boolean) => {
+				const editor = this.getEditor(checking);
+				if (!editor) return false;
+				let text = editor.getSelection();
+				if (text.length === 0) return true;
+				text = this.switchCase(text);
+				editor.replaceSelection(text);
+				editor.setSelection(
+					editor.getCursor("anchor"),
+					editor.getCursor("head")
+				);
+				return true;
+			},
+			hotkeys: [{ modifiers: ["Shift"], key: "f3" }],
 		});
 
 		// Настройки
@@ -526,6 +540,28 @@ export default class DocxPlugin extends Plugin {
 			};
 			img.onerror = (err) => reject();
 		});
+	}
+
+	getEditor(checking: boolean) {
+		if (checking) return undefined;
+		const view = this.checkView();
+		if (view == null) return undefined;
+		return view.editor;
+	}
+
+	switchCase(text: string): string {
+		switch (text) {
+			case text.toUpperCase():
+				return text.toLowerCase();
+			case this.capitalize(text):
+				return text.toUpperCase();
+			default:
+				return this.capitalize(text);
+		}
+	}
+
+	capitalize(text: string): string {
+		return text[0]?.toUpperCase() + text.slice(1).toLowerCase();
 	}
 
 	isImage(line: string): boolean {
