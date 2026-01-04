@@ -200,6 +200,7 @@ export default class DocxPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
+				if (!file.name.endsWith(".md")) return;
 				menu.addItem((item: MenuItem) => {
 					item.setTitle("Экспортировать в .docx")
 						.setIcon(this.mainIcon)
