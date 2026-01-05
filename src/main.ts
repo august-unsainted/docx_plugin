@@ -18,179 +18,14 @@ import {
 	Paragraph,
 	TextRun,
 	ImageRun,
-	Footer,
-	AlignmentType,
-	PageNumber,
-	convertMillimetersToTwip,
-	NumberFormat,
 	TableOfContents,
-	LevelFormat,
 } from "docx";
-import { EditorView, ViewUpdate } from "@codemirror/view";
-import {
-	EditorSelection,
-	SelectionRange,
-	Transaction,
-	TransactionSpec,
-} from "@codemirror/state";
+import formatting from "formatting";
+import editorExtension from "editorExtension";
 
 export default class DocxPlugin extends Plugin {
 	settings: DocxPluginSettings;
 	mainIcon: string = "file-input";
-	properties = {
-		titlePage: true,
-		page: {
-			pageNumbers: {
-				start: 1,
-				formatType: NumberFormat.DECIMAL,
-			},
-			margin: {
-				top: "2cm",
-				right: "2cm",
-				bottom: "2cm",
-				left: "3cm",
-			},
-		},
-	};
-
-	footers = {
-		default: new Footer({
-			children: [
-				new Paragraph({
-					style: "center",
-					children: [
-						new TextRun({
-							children: ["", PageNumber.CURRENT],
-						}),
-					],
-				}),
-			],
-		}),
-		first: new Footer({
-			children: [new Paragraph({ text: "" })],
-		}),
-	};
-
-	styles = {
-		default: {
-			document: {
-				run: {
-					size: "14pt",
-					font: "Times New Roman",
-				},
-				paragraph: {
-					alignment: AlignmentType.JUSTIFIED,
-					spacing: {
-						line: 360,
-					},
-				},
-			},
-		},
-		paragraphStyles: [
-			{
-				id: "standard",
-				name: "Стандартный",
-				basedOn: "Normal",
-				quickFormat: true,
-				paragraph: {
-					indent: {
-						firstLine: convertMillimetersToTwip(12.5),
-					},
-				},
-			},
-			{
-				id: "chapter",
-				name: "Глава",
-				basedOn: "normal",
-				quickFormat: true,
-				next: "paragraph",
-				run: {
-					size: "16pt",
-				},
-				paragraph: {
-					outlineLevel: 0,
-				},
-			},
-			{
-				id: "paragraph",
-				name: "Параграф",
-				basedOn: "heading2",
-				next: "normal",
-				quickFormat: true,
-				paragraph: {
-					outlineLevel: 1,
-					spacing: {
-						before: 120,
-						after: 120,
-					},
-				},
-			},
-			{
-				id: "code",
-				name: "Код",
-				basedOn: "normal",
-				next: "normal",
-				quickFormat: true,
-				paragraph: {
-					indent: {
-						firstLine: 0,
-					},
-					spacing: {
-						line: 240,
-					},
-				},
-			},
-			{
-				id: "center",
-				name: "По центру",
-				basedOn: "normal",
-				next: "normal",
-				quickFormat: true,
-				paragraph: {
-					alignment: AlignmentType.CENTER,
-					indent: {
-						firstLine: 0,
-					},
-				},
-			},
-		],
-	};
-
-	numbering = {
-		config: [
-			{
-				reference: "base-numbering",
-				levels: [
-					{
-						level: 0,
-						format: LevelFormat.DECIMAL,
-						text: "%1.",
-						alignment: AlignmentType.START,
-					},
-				],
-			},
-			{
-				reference: "bullet-points",
-				levels: [
-					{
-						level: 0,
-						format: LevelFormat.BULLET,
-						text: "\u00B7",
-						alignment: AlignmentType.START,
-						style: {
-							run: {
-								font: "Symbol",
-							},
-						},
-					},
-				],
-			},
-		],
-	};
-
-	features: {
-		updateFields: true;
-	};
 
 	exclusions = [
 		"введение",
@@ -241,7 +76,7 @@ export default class DocxPlugin extends Plugin {
 			const view = this.checkView();
 			if (view == null) return;
 			let pages = Math.round(view.editor.getValue().length / 1000);
-			pagesCount.setText(`Страниц: ${pages}`);
+			pagesCount.setText(`Страниц: ${pages || 1}`);
 		};
 
 		// Команда
@@ -285,36 +120,17 @@ export default class DocxPlugin extends Plugin {
 			hotkeys: [{ modifiers: ["Shift"], key: "f3" }],
 		});
 
-		// Настройки
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-		this.registerEditorExtension(
-			EditorView.updateListener.of((update) => {
-				update.transactions.forEach((transaction) => {
-					const eventType = transaction.annotation(
-						Transaction.userEvent
-					);
-					if (eventType !== "input.type") return;
-					let changeInfo;
-					transaction.changes.iterChanges(
-						(_fromA, _toA, from, to, change) => {
-							if (change.toString().includes('"'))
-								changeInfo = [from, to, change];
-						}
-					);
-					if (changeInfo) this.handleUpdate(update, changeInfo);
-				});
-			})
-		);
+		this.registerEditorExtension(editorExtension);
 	}
 
 	onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<DocxPluginSettings>
-		);
+		this.settings = {
+			...DEFAULT_SETTINGS,
+			...((await this.loadData()) as Partial<DocxPluginSettings>),
+		};
 	}
 
 	async saveSettings() {
@@ -329,16 +145,21 @@ export default class DocxPlugin extends Plugin {
 		}
 
 		new Notice("Экспорт файла...");
-		this.buildDocxFromMarkdown(
-			markdownView.editor.getValue(),
-			markdownView.file?.basename
-		);
+		let doc = await this.buildDocument(markdownView.editor.getValue());
+
+		let fileName = markdownView.file?.basename;
+		const filePath = (fileName || "document") + ".doc";
+		Packer.toBlob(doc).then(async (blob) => {
+			this.app.vault.adapter.writeBinary(
+				filePath,
+				await blob.arrayBuffer()
+			);
+			await (this.app as any).openWithDefaultApp(filePath);
+			new Notice(`Документ «${fileName}» создан!`);
+		});
 	}
 
-	async buildDocxFromMarkdown(
-		markdown: string,
-		fileName?: string
-	): Promise<void> {
+	async buildDocument(markdown: string): Promise<Document> {
 		let pageBreakBefore = false,
 			alignCenter = false,
 			codeStyle = false,
@@ -352,12 +173,9 @@ export default class DocxPlugin extends Plugin {
 				codeStyle = !codeStyle;
 				return;
 			}
+			if (codeStyle) return this.buildCode(line);
 
-			if (!codeStyle) {
-				line = line
-					.trim()
-					.replace("{img}", `(рис. ${pictureNumber + 1})`);
-			}
+			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
 
 			if (line === "") return;
 			if (line === "---") {
@@ -372,33 +190,28 @@ export default class DocxPlugin extends Plugin {
 			}
 
 			if (line.startsWith("- ")) {
-				line = line.replace("- ", "");
-				return this.buildNumbering(line, -1);
+				return this.buildNumbering(line.slice(2), -1);
 			}
 
 			if (numberedLists[-1]?.length != 0) {
 				numberedLists.push([]);
 			}
 
-			let level = 0;
 			if (line.startsWith("#")) {
 				let isChapter = line.startsWith("# ");
 				line = line.replace(/#/g, "").trim();
 				let counter;
 				if (this.exclusions.includes(line.toLowerCase())) {
-					pageBreakBefore = true;
-					level = 1;
-				} else {
-					if (isChapter) {
-						paragraphNumber = 0;
-						counter = ++chapterNumber;
-						pageBreakBefore = true;
-					} else {
-						counter = `${chapterNumber}.${++paragraphNumber}`;
-					}
-					line = `${counter}. ${line}`;
-					level = isChapter ? 1 : 2;
+					return this.buildHeader(line, true);
 				}
+
+				if (isChapter) {
+					paragraphNumber = 0;
+					counter = ++chapterNumber;
+				} else {
+					counter = `${chapterNumber}.${++paragraphNumber}`;
+				}
+				return this.buildHeader(`${counter}. ${line}`, isChapter);
 			}
 
 			line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {
@@ -407,25 +220,14 @@ export default class DocxPlugin extends Plugin {
 			});
 
 			if (alignCenter) line = `Рисунок ${++pictureNumber}. ${line}`;
-
-			let paragraph = this.buildParagraph(
-				line,
-				level,
-				pageBreakBefore,
-				alignCenter,
-				codeStyle
-			);
+			let paragraph = this.buildText(line, alignCenter, pageBreakBefore);
 			alignCenter = this.isImage(line);
 			pageBreakBefore = false;
 			return paragraph;
 		});
 
 		const children = [
-			new Paragraph({
-				style: "center",
-				pageBreakBefore: true,
-				text: "Оглавление",
-			}),
+			await this.buildText("Оглавление", true, true),
 			new TableOfContents("Оглавление", {
 				hyperlink: true,
 				headingStyleRange: "1-2",
@@ -433,100 +235,51 @@ export default class DocxPlugin extends Plugin {
 			...(await Promise.all(promises)),
 			...(await this.buildSources(sources)),
 		];
-		let { properties, footers, styles, features, numbering } = this;
 
-		const doc = new Document({
-			numbering: numbering as any,
-			styles: styles as any,
+		let { properties, footers, styles, features, numbering } = formatting;
+		return new Document({
+			numbering,
 			features,
+			styles: styles as any,
 			sections: [
 				{
-					properties: properties as any,
 					footers,
+					properties: properties as any,
 					children: children as any,
 				},
 			],
 		});
-
-		const filePath = (fileName || "document") + ".docx";
-
-		Packer.toBlob(doc).then(async (blob) => {
-			this.app.vault.adapter.writeBinary(
-				filePath,
-				await blob.arrayBuffer()
-			);
-			await (this.app as any).openWithDefaultApp(filePath);
-			new Notice(`Документ «${fileName}» создан!`);
-		});
 	}
 
-	async buildParagraph(
+	async buildText(
 		text: string,
-		level: number = 0,
-		pageBreakBefore: boolean = false,
 		alignCenter: boolean = false,
-		codeStyle: boolean = false
+		pageBreakBefore: boolean = false
 	): Promise<Paragraph> {
-		if (!codeStyle) text = text.trim();
-		let data: any = {};
-
-		if (level == 0) {
-			let child = await this.renderImage(text);
-			data.children = [child || new TextRun({ text })];
-			data.style = alignCenter || child ? "center" : "standard";
-		} else {
-			data = {
-				text,
-				style: level === 1 ? "chapter" : "paragraph",
-			};
-		}
-
-		if (codeStyle) data.style = "code";
-		if (pageBreakBefore) data.pageBreakBefore = true;
-
+		let data: any = {pageBreakBefore};
+		let image = await this.renderImage(text);
+		data.children = [image || new TextRun({ text })];
+		data.style = alignCenter || image ? "center" : "standard";
 		return new Paragraph(data);
 	}
 
-	handleUpdate(
-		update: ViewUpdate,
-		params: [fromB: number, toB: number, inserted: Text]
-	) {
-		let [from, to, change] = params;
-		if (!change.toString().includes('"')) return;
-		let ranges = update.view.state.selection.ranges;
-		if (ranges.length === 1 && ranges[0]?.empty) {
-			update.view.dispatch(this.getCursorTransaction(update, from, to));
-			return;
-		}
-		let transactions: Transaction[] = [];
-		let selectionRanges = [];
-		for (let range of ranges) {
-			if (range.from > range.to) return;
-			if (range.empty) {
-				transactions.push(this.getCursorTransaction(update, range.from - 1, range.to));
-				continue;
-			}
-			transactions.push(this.getRangeTransaction(update, range));
-			selectionRanges.push(
-				range.head === range.from
-					? EditorSelection.range(range.to, range.from)
-					: EditorSelection.range(range.from, range.to)
-			);
-		}
-		update.view.dispatch(...transactions);
-		if (selectionRanges.length > 0) {
-			update.view.dispatch(
-				this.getTransaction(update, {
-					selection: EditorSelection.create([...selectionRanges]),
-				})
-			);
-		}
+	buildCode(text: string) {
+		new Paragraph({ text, style: "code" });
+	}
+
+	async buildHeader(text: string, isChapter: boolean) {
+		let data = {
+			text,
+			style: isChapter ? "chapter" : "paragraph",
+			pageBreakBefore: isChapter,
+		};
+		return new Paragraph(data);
 	}
 
 	async buildSources(sources: Promise<string>[]): Promise<Paragraph[]> {
 		let items = await Promise.all(sources);
 		let paragraphs = items.map((item) => this.buildNumbering(item, 0));
-		let header = await this.buildParagraph("Список литературы", 1, true);
+		let header = await this.buildHeader("Список литературы", true);
 		return [header, ...paragraphs];
 	}
 
@@ -618,41 +371,6 @@ export default class DocxPlugin extends Plugin {
 			default:
 				return this.capitalize(text);
 		}
-	}
-
-	getTransaction(
-		update: ViewUpdate,
-		updateData: TransactionSpec
-	): Transaction {
-		return update.view.state.update(updateData);
-	}
-
-	getCursorTransaction(
-		update: ViewUpdate,
-		from: number,
-		to: number
-	): Transaction {
-		let updateData = {
-			changes: {
-				from: from,
-				to: to,
-				insert: "«»",
-			},
-			selection: EditorSelection.cursor(from + 1),
-		};
-		return this.getTransaction(update, updateData);
-	}
-
-	getRangeTransaction(update: ViewUpdate, range: SelectionRange) {
-		let text = update.view.state.doc.sliceString(range.from, range.to);
-		let transaction = {
-			changes: {
-				from: range.from - 1,
-				to: range.to + 1,
-				insert: `«${text}»`,
-			},
-		};
-		return this.getTransaction(update, transaction);
 	}
 
 	capitalize(text: string): string {
