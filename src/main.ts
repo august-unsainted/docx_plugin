@@ -503,13 +503,10 @@ export default class DocxPlugin extends Plugin {
 		for (let range of ranges) {
 			if (range.from > range.to) return;
 			if (range.empty) {
-				transactions.push(this.getCursorTransaction(update, from, to));
+				transactions.push(this.getCursorTransaction(update, range.from - 1, range.to));
 				continue;
 			}
 			transactions.push(this.getRangeTransaction(update, range));
-			console.log(
-				`head: ${range.head}, anchor: ${range.anchor}, from: ${range.from}, to: ${range.to}`
-			);
 			selectionRanges.push(
 				range.head === range.from
 					? EditorSelection.range(range.to, range.from)
@@ -517,11 +514,13 @@ export default class DocxPlugin extends Plugin {
 			);
 		}
 		update.view.dispatch(...transactions);
-		update.view.dispatch(
-			this.getTransaction(update, {
-				selection: EditorSelection.create([...selectionRanges]),
-			})
-		);
+		if (selectionRanges.length > 0) {
+			update.view.dispatch(
+				this.getTransaction(update, {
+					selection: EditorSelection.create([...selectionRanges]),
+				})
+			);
+		}
 	}
 
 	async buildSources(sources: Promise<string>[]): Promise<Paragraph[]> {
