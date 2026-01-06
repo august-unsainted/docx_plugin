@@ -110,11 +110,10 @@ export default class DocxPlugin extends Plugin {
 				let text = editor.getSelection();
 				if (text.length === 0) return true;
 				text = this.switchCase(text);
+				const anchor = editor.getCursor("anchor");
+				const head = editor.getCursor("head");
 				editor.replaceSelection(text);
-				editor.setSelection(
-					editor.getCursor("anchor"),
-					editor.getCursor("head")
-				);
+				editor.setSelection(anchor, head);
 				return true;
 			},
 			hotkeys: [{ modifiers: ["Shift"], key: "f3" }],
@@ -208,6 +207,7 @@ export default class DocxPlugin extends Plugin {
 				if (isChapter) {
 					paragraphNumber = 0;
 					counter = ++chapterNumber;
+					pageBreakBefore = false;
 				} else {
 					counter = `${chapterNumber}.${++paragraphNumber}`;
 				}
@@ -256,15 +256,15 @@ export default class DocxPlugin extends Plugin {
 		alignCenter: boolean = false,
 		pageBreakBefore: boolean = false
 	): Promise<Paragraph> {
-		let data: any = {pageBreakBefore};
+		let data: any = { pageBreakBefore };
 		let image = await this.renderImage(text);
 		data.children = [image || new TextRun({ text })];
 		data.style = alignCenter || image ? "center" : "standard";
 		return new Paragraph(data);
 	}
 
-	buildCode(text: string) {
-		new Paragraph({ text, style: "code" });
+	async buildCode(text: string) {
+		return new Paragraph({ text, style: "code" });
 	}
 
 	async buildHeader(text: string, isChapter: boolean) {
