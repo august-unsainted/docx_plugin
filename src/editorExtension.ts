@@ -2,6 +2,7 @@ import { EditorView, ViewUpdate } from "@codemirror/view";
 import {
 	EditorSelection,
 	SelectionRange,
+	Text,
 	Transaction,
 	TransactionSpec,
 } from "@codemirror/state";
@@ -14,14 +15,37 @@ export default EditorView.updateListener.of((update) => {
 
 function handleUpdate(update: ViewUpdate, transaction: Transaction) {
 	const eventType = transaction.annotation(Transaction.userEvent);
-	if (eventType !== "input.type") return;
-	let from, to;
-	transaction.changes.iterChanges((_, __, fromB, toB, changeText) => {
-		if (changeText.toString().includes('"')) {
+	let isDelete = eventType === "delete.backward";
+	if (eventType !== "input.type" && !isDelete) return;
+
+	let doc = transaction.startState.doc,
+		from,
+		to;
+	transaction.changes.iterChanges((fromA, toA, fromB, toB, changeText) => {
+		if (
+			isDelete &&
+			doc.sliceString(fromA, toA) === "«" &&
+			findNextSybmol(doc, fromA) === "»"
+		) {
+			[from, to] = [fromB, toB];
+			return;
+		}
+
+		if (!isDelete && changeText.toString().includes('"')) {
 			[from, to] = [fromB, toB];
 		}
 	});
-	if (from && to) handleChanges(update, from, to);
+	if (!from || !to) return;
+	if (isDelete) {
+		let newTransaction = {
+			changes: {
+				from: from,
+				to: from + 1,
+				insert: "",
+			},
+		};
+		update.view.dispatch(updateState(update, newTransaction));
+	} else handleChanges(update, from, to);
 }
 
 function handleChanges(update: ViewUpdate, from: number, to: number) {
@@ -65,7 +89,7 @@ function addQuotes(update: ViewUpdate, from: number, to: number): Transaction {
 			to: to,
 			insert: "«»",
 		},
-		selection: EditorSelection.cursor(from + 1)
+		selection: EditorSelection.cursor(from + 1),
 	};
 	return updateState(update, transaction);
 }
@@ -80,4 +104,8 @@ function wrapQuotes(update: ViewUpdate, range: SelectionRange) {
 		},
 	};
 	return updateState(update, transaction);
+}
+
+function findNextSybmol(doc: Text, from: number) {
+	return doc.sliceString(from + 1, from + 2);
 }
