@@ -67,6 +67,7 @@ function addQuotes(update: ViewUpdate, from: number, to: number): Transaction {
 		},
 		selection: EditorSelection.cursor(from + 1)
 	};
+	console.log(transaction);
 	return updateState(update, transaction);
 }
 
@@ -79,5 +80,6 @@ function wrapQuotes(update: ViewUpdate, range: SelectionRange) {
 			insert: `«${text}»`,
 		},
 	};
+	console.log(transaction);
 	return updateState(update, transaction);
 }
