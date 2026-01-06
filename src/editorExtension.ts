@@ -21,7 +21,10 @@ function handleUpdate(update: ViewUpdate, transaction: Transaction) {
 			[from, to] = [fromB, toB];
 		}
 	});
-	if (!from || !to) return;
+	if (from && to) handleChanges(update, from, to);
+}
+
+function handleChanges(update: ViewUpdate, from: number, to: number) {
 	let ranges = update.view.state.selection.ranges;
 	if (ranges.length === 1 && ranges[0]?.empty) {
 		update.view.dispatch(addQuotes(update, from, to));
@@ -29,31 +32,30 @@ function handleUpdate(update: ViewUpdate, transaction: Transaction) {
 	}
 
 	let transactions: Transaction[] = [],
-		selectionRanges = [];
+		selections = [];
 	for (let range of ranges) {
 		let newTransaction = range.empty
-			? addQuotes(update, range.from - 1, range.to)
+			? addQuotes(update, range.from - 1, range.to + 1)
 			: wrapQuotes(update, range);
 		transactions.push(newTransaction);
-
-		if (!range.empty) {
-			selectionRanges.push(
-				EditorSelection.range(range.anchor, range.head)
-			);
-		}
+		selections.push(
+			range.empty
+				? EditorSelection.cursor(range.from)
+				: EditorSelection.range(range.anchor, range.head)
+		);
 	}
 
 	update.view.dispatch(...transactions);
-	if (selectionRanges.length) {
+	if (selections.length) {
 		let newSelections = {
-			selection: EditorSelection.create([...selectionRanges]),
+			selection: EditorSelection.create([...selections]),
 		};
 		update.view.dispatch(updateState(update, newSelections));
 	}
 }
 
 function updateState(update: ViewUpdate, transaction: TransactionSpec) {
-	return update.view.state.update(update, transaction);
+	return update.view.state.update(transaction);
 }
 
 function addQuotes(update: ViewUpdate, from: number, to: number): Transaction {
@@ -63,7 +65,7 @@ function addQuotes(update: ViewUpdate, from: number, to: number): Transaction {
 			to: to,
 			insert: "«»",
 		},
-		selection: EditorSelection.cursor(from + 1),
+		selection: EditorSelection.cursor(from + 1)
 	};
 	return updateState(update, transaction);
 }
