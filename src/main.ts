@@ -174,6 +174,22 @@ export default class DocxPlugin extends Plugin {
 			}
 			if (codeStyle) return this.buildCode(line);
 
+			if (line.match(/\t*\d+?\. .+/)) {
+				let item = line.split(". ", 2)[1] || "";
+				const nestingLevel = (line.match(/\t/g) || []).length;
+				numberedLists.last()?.push(item);
+
+				return this.buildNumbering(
+					item,
+					numberedLists.length,
+					nestingLevel
+				);
+			}
+
+			if (line.startsWith("- ")) {
+				return this.buildNumbering(line.slice(2), -1);
+			}
+
 			line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
 
 			if (line === "") return;
@@ -182,17 +198,7 @@ export default class DocxPlugin extends Plugin {
 				return;
 			}
 
-			if (line.match(/\d+?\. .+/)) {
-				line = line.split(". ", 2)[1] || "";
-				numberedLists[-1]?.push(line);
-				return this.buildNumbering(line, numberedLists.length);
-			}
-
-			if (line.startsWith("- ")) {
-				return this.buildNumbering(line.slice(2), -1);
-			}
-
-			if (numberedLists[-1]?.length != 0) {
+			if (numberedLists.last()?.length != 0) {
 				numberedLists.push([]);
 			}
 
@@ -283,10 +289,14 @@ export default class DocxPlugin extends Plugin {
 		return [header, ...paragraphs];
 	}
 
-	buildNumbering(text: string, instance: number): Paragraph {
+	buildNumbering(
+		text: string,
+		instance: number,
+		level: number = 0
+	): Paragraph {
 		let isBullets = instance < 0;
 		let numbering = {
-			level: 0,
+			level,
 			reference: isBullets ? "bullet-points" : "base-numbering",
 			instance,
 		};

@@ -9,6 +9,21 @@ import {
 	TextRun,
 } from "docx";
 
+const simpleLevel = (level: number) => ({
+	level,
+	format: LevelFormat.DECIMAL,
+	text: `%${level + 1}.`,
+	alignment: AlignmentType.START,
+	style: {
+		paragraph: {
+			indent: {
+				firstLine: 0,
+				left: convertMillimetersToTwip(level * 12.5),
+			},
+		},
+	},
+});
+
 export default {
 	properties: {
 		titlePage: true,
@@ -133,14 +148,7 @@ export default {
 		config: [
 			{
 				reference: "base-numbering",
-				levels: [
-					{
-						level: 0,
-						format: LevelFormat.DECIMAL,
-						text: "%1.",
-						alignment: AlignmentType.START,
-					},
-				],
+				levels: [simpleLevel(0), simpleLevel(1), simpleLevel(2)],
 			},
 			{
 				reference: "bullet-points",
