@@ -1,4 +1,11 @@
-import {App, DropdownComponent, PluginSettingTab, Setting, TextComponent, ToggleComponent} from "obsidian";
+import {
+	App,
+	DropdownComponent,
+	PluginSettingTab,
+	Setting,
+	TextComponent,
+	ToggleComponent,
+} from "obsidian";
 import DocxPlugin from "./main";
 
 type SettingKey = keyof DocxPluginSettings;
@@ -43,15 +50,15 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	paragraphFontSize: 14,
 	paragraphBold: true,
 	paragraphAlignment: "justified",
-	paragraphIndent: true,
+	paragraphIndent: false,
 	aiProvider: "openrouter",
 	openrouterApiKey: "",
-	openrouterModel: "deepseek/deepseek-chat-v3-0324:free",
+	openrouterModel: "z-ai/glm-4.5-air:free",
 	groqApiKey: "",
-	groqModel: "llama-3.3-70b-versatile",
-	aiSystemPromptFull: "Ты — автор курсовых и дипломных работ. Пиши академическим языком на русском. Используй markdown-разметку: # для глав, ## для параграфов, --- для разрывов страниц. Структура: введение, главы с параграфами, заключение. Не используй жирный шрифт в заголовках. ВАЖНО: сохраняй оригинальный регистр букв, не переводи текст в нижний регистр.",
-	aiSystemPromptPartial: "Ты дописываешь часть академической работы на русском языке. Сохраняй стиль и логику предыдущего текста. Пиши только запрошенный фрагмент, без лишних пояснений. Используй markdown-разметку. ВАЖНО: сохраняй оригинальный регистр букв, не переводи текст в нижний регистр.",
-}
+	groqModel: "qwen/qwen3-32b",
+	aiSystemPromptFull: "",
+	aiSystemPromptPartial: "",
+};
 
 export class SampleSettingTab extends PluginSettingTab {
 	plugin: DocxPlugin;
@@ -61,160 +68,264 @@ export class SampleSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	private addNumber(containerEl: HTMLElement, name: string, key: SettingKey, desc?: string) {
-		new Setting(containerEl).setName(name).setDesc(desc ?? "").addText((t: TextComponent) => t
-			.setValue(String(this.plugin.settings[key]))
-			.onChange(async (v) => {
-				(this.plugin.settings[key] as number) = Number(v) || (DEFAULT_SETTINGS[key] as number);
-				await this.plugin.saveSettings();
-			}));
+	private addNumber(
+		containerEl: HTMLElement,
+		name: string,
+		key: SettingKey,
+		desc?: string,
+	) {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc ?? "")
+			.addText((t: TextComponent) =>
+				t
+					.setValue(String(this.plugin.settings[key]))
+					.onChange(async (v) => {
+						(this.plugin.settings[key] as number) =
+							Number(v) || (DEFAULT_SETTINGS[key] as number);
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
-	private addStringDropdown(containerEl: HTMLElement, name: string, key: SettingKey, options: Record<string, string>, desc?: string) {
-		new Setting(containerEl).setName(name).setDesc(desc ?? "").addDropdown((d: DropdownComponent) => d
-			.addOptions(options)
-			.setValue(String(this.plugin.settings[key]))
-			.onChange(async (v) => {
-				(this.plugin.settings[key] as string) = v;
-				await this.plugin.saveSettings();
-			}));
+	private addStringDropdown(
+		containerEl: HTMLElement,
+		name: string,
+		key: SettingKey,
+		options: Record<string, string>,
+		desc?: string,
+	) {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc ?? "")
+			.addDropdown((d: DropdownComponent) =>
+				d
+					.addOptions(options)
+					.setValue(String(this.plugin.settings[key]))
+					.onChange(async (v) => {
+						(this.plugin.settings[key] as string) = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
-	private addDropdownSetting(containerEl: HTMLElement, name: string, key: SettingKey, options: Record<string, string>, desc?: string) {
-		new Setting(containerEl).setName(name).setDesc(desc ?? "").addDropdown((d: DropdownComponent) => d
-			.addOptions(options)
-			.setValue(String(this.plugin.settings[key]))
-			.onChange(async (v) => {
-				(this.plugin.settings[key] as number) = Number(v);
-				await this.plugin.saveSettings();
-			}));
+	private addDropdownSetting(
+		containerEl: HTMLElement,
+		name: string,
+		key: SettingKey,
+		options: Record<string, string>,
+		desc?: string,
+	) {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc ?? "")
+			.addDropdown((d: DropdownComponent) =>
+				d
+					.addOptions(options)
+					.setValue(String(this.plugin.settings[key]))
+					.onChange(async (v) => {
+						(this.plugin.settings[key] as number) = Number(v);
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
-	private addToggleSetting(containerEl: HTMLElement, name: string, key: SettingKey, desc?: string) {
-		new Setting(containerEl).setName(name).setDesc(desc ?? "").addToggle((t: ToggleComponent) => t
-			.setValue(this.plugin.settings[key] as boolean)
-			.onChange(async (v) => {
-				(this.plugin.settings[key] as boolean) = v;
-				await this.plugin.saveSettings();
-			}));
+	private addToggleSetting(
+		containerEl: HTMLElement,
+		name: string,
+		key: SettingKey,
+		desc?: string,
+	) {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc ?? "")
+			.addToggle((t: ToggleComponent) =>
+				t
+					.setValue(this.plugin.settings[key] as boolean)
+					.onChange(async (v) => {
+						(this.plugin.settings[key] as boolean) = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
 		// ── Шрифт ──
-		containerEl.createEl("h3", {text: "Шрифт"});
+		containerEl.createEl("h3", { text: "Шрифт" });
 
-		this.addDropdownSetting(containerEl, "Размер шрифта (пт)", "fontSize",
-			{"12": "12", "13": "13", "14": "14", "16": "16"}, "Основной размер текста");
-		this.addDropdownSetting(containerEl, "Межстрочный интервал", "lineSpacing",
-			{"1": "Одинарный", "1.15": "1.15", "1.5": "Полуторный", "2": "Двойной"});
-		this.addNumber(containerEl, "Абзацный отступ (мм)", "firstLineIndent", "Красная строка");
+		this.addDropdownSetting(
+			containerEl,
+			"Размер шрифта (пт)",
+			"fontSize",
+			{ "12": "12", "13": "13", "14": "14", "16": "16" },
+			"Основной размер текста",
+		);
+		this.addDropdownSetting(
+			containerEl,
+			"Межстрочный интервал",
+			"lineSpacing",
+			{
+				"1": "Одинарный",
+				"1.15": "1.15",
+				"1.5": "Полуторный",
+				"2": "Двойной",
+			},
+		);
+		this.addNumber(
+			containerEl,
+			"Абзацный отступ (мм)",
+			"firstLineIndent",
+			"Красная строка",
+		);
 
 		// ── Заголовки глав ──
-		containerEl.createEl("h3", {text: "Заголовки глав (#)"});
+		containerEl.createEl("h3", { text: "Заголовки глав (#)" });
 
-		this.addDropdownSetting(containerEl, "Размер шрифта (пт)", "chapterFontSize",
-			{"14": "14", "16": "16", "18": "18"});
+		this.addDropdownSetting(
+			containerEl,
+			"Размер шрифта (пт)",
+			"chapterFontSize",
+			{ "14": "14", "16": "16", "18": "18" },
+		);
 		this.addToggleSetting(containerEl, "Жирное начертание", "chapterBold");
-		this.addStringDropdown(containerEl, "Выравнивание", "chapterAlignment",
-			{"center": "По центру", "left": "По левому краю", "justified": "По ширине"});
-		this.addToggleSetting(containerEl, "Абзацный отступ", "chapterIndent",
-			"Красная строка у заголовков глав");
+		this.addStringDropdown(
+			containerEl,
+			"Выравнивание",
+			"chapterAlignment",
+			{
+				center: "По центру",
+				left: "По левому краю",
+				justified: "По ширине",
+			},
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Абзацный отступ",
+			"chapterIndent",
+			"Красная строка у заголовков глав",
+		);
 
 		// ── Заголовки параграфов ──
-		containerEl.createEl("h3", {text: "Заголовки параграфов (##)"});
+		containerEl.createEl("h3", { text: "Заголовки параграфов (##)" });
 
-		this.addDropdownSetting(containerEl, "Размер шрифта (пт)", "paragraphFontSize",
-			{"14": "14", "16": "16", "18": "18"});
-		this.addToggleSetting(containerEl, "Жирное начертание", "paragraphBold");
-		this.addStringDropdown(containerEl, "Выравнивание", "paragraphAlignment",
-			{"center": "По центру", "left": "По левому краю", "justified": "По ширине"});
-		this.addToggleSetting(containerEl, "Абзацный отступ", "paragraphIndent",
-			"Красная строка у заголовков параграфов");
+		this.addDropdownSetting(
+			containerEl,
+			"Размер шрифта (пт)",
+			"paragraphFontSize",
+			{ "14": "14", "16": "16", "18": "18" },
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Жирное начертание",
+			"paragraphBold",
+		);
+		this.addStringDropdown(
+			containerEl,
+			"Выравнивание",
+			"paragraphAlignment",
+			{
+				center: "По центру",
+				left: "По левому краю",
+				justified: "По ширине",
+			},
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Абзацный отступ",
+			"paragraphIndent",
+			"Красная строка у заголовков параграфов",
+		);
 
 		// ── ИИ-генерация ──
-		containerEl.createEl("h3", {text: "ИИ генерация"});
+		containerEl.createEl("h3", { text: "ИИ генерация" });
 
-		this.addStringDropdown(containerEl, "Провайдер", "aiProvider",
-			{"openrouter": "OpenRouter", "groq": "Groq"});
-
-				new Setting(containerEl)
-			.setName("Системный промт (полная генерация)")
-			.addTextArea(t => {
+		new Setting(containerEl)
+			.setName("Промт полной генерации работы")
+			.setDesc("Оставьте пустым для промта по умолчанию")
+			.addTextArea((t) => {
 				t.inputEl.rows = 5;
 				t.inputEl.style.width = "100%";
-				t.setValue(this.plugin.settings.aiSystemPromptFull)
-				 .onChange(async (v) => {
-					this.plugin.settings.aiSystemPromptFull = v;
-					await this.plugin.saveSettings();
-				 });
+				t.setValue(this.plugin.settings.aiSystemPromptFull).onChange(
+					async (v) => {
+						this.plugin.settings.aiSystemPromptFull = v;
+						await this.plugin.saveSettings();
+					},
+				);
 			});
 
 		new Setting(containerEl)
-			.setName("Системный промт (генерация фрагмента)")
-			.addTextArea(t => {
+			.setName("Промт генерации выделенного фрагмента")
+			.setDesc("Оставьте пустым для промта по умолчанию")
+			.addTextArea((t) => {
 				t.inputEl.rows = 5;
 				t.inputEl.style.width = "100%";
-				t.setValue(this.plugin.settings.aiSystemPromptPartial)
-				 .onChange(async (v) => {
-					this.plugin.settings.aiSystemPromptPartial = v;
-					await this.plugin.saveSettings();
-				 });
+				t.setValue(this.plugin.settings.aiSystemPromptPartial).onChange(
+					async (v) => {
+						this.plugin.settings.aiSystemPromptPartial = v;
+						await this.plugin.saveSettings();
+					},
+				);
 			});
 
+		this.addStringDropdown(containerEl, "Провайдер", "aiProvider", {
+			openrouter: "OpenRouter",
+			groq: "Groq",
+		});
+
 		// ── OpenRouter ──
-		containerEl.createEl("h4", {text: "OpenRouter"});
+		containerEl.createEl("h4", { text: "OpenRouter" });
 
 		new Setting(containerEl)
 			.setName("API ключ")
 			.setDesc("Получить на openrouter.ai/keys")
-			.addText(t => {
+			.addText((t) => {
 				t.inputEl.type = "password";
 				t.setValue(this.plugin.settings.openrouterApiKey)
-				 .setPlaceholder("sk-or-...")
-				 .onChange(async (v) => {
-					this.plugin.settings.openrouterApiKey = v;
-					await this.plugin.saveSettings();
-				 });
+					.setPlaceholder("sk-or-...")
+					.onChange(async (v) => {
+						this.plugin.settings.openrouterApiKey = v;
+						await this.plugin.saveSettings();
+					});
 			});
 
-		new Setting(containerEl)
-			.setName("Модель")
-			.addText(t => t
+		new Setting(containerEl).setName("Модель").addText((t) =>
+			t
 				.setValue(this.plugin.settings.openrouterModel)
-				.setPlaceholder("deepseek/deepseek-chat-v3-0324:free")
+				.setPlaceholder(DEFAULT_SETTINGS.openrouterModel)
 				.onChange(async (v) => {
 					this.plugin.settings.openrouterModel = v;
 					await this.plugin.saveSettings();
-				}));
+				}),
+		);
 
 		// ── Groq ──
-		containerEl.createEl("h4", {text: "Groq"});
+		containerEl.createEl("h4", { text: "Groq (только с VPN)" });
 
 		new Setting(containerEl)
 			.setName("API ключ")
 			.setDesc("Получить на console.groq.com/keys")
-			.addText(t => {
+			.addText((t) => {
 				t.inputEl.type = "password";
 				t.setValue(this.plugin.settings.groqApiKey)
-				 .setPlaceholder("gsk_...")
-				 .onChange(async (v) => {
-					this.plugin.settings.groqApiKey = v;
-					await this.plugin.saveSettings();
-				 });
+					.setPlaceholder("gsk_...")
+					.onChange(async (v) => {
+						this.plugin.settings.groqApiKey = v;
+						await this.plugin.saveSettings();
+					});
 			});
 
-		new Setting(containerEl)
-			.setName("Модель")
-			.addText(t => t
+		new Setting(containerEl).setName("Модель").addText((t) =>
+			t
 				.setValue(this.plugin.settings.groqModel)
-				.setPlaceholder("llama-3.3-70b-versatile")
+				.setPlaceholder(DEFAULT_SETTINGS.groqModel)
 				.onChange(async (v) => {
 					this.plugin.settings.groqModel = v;
 					await this.plugin.saveSettings();
-				}));
+				}),
+		);
 	}
 }

@@ -50,8 +50,6 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 		{ role: "user", content: userMessage },
 	];
 
-	// requestUrl в Obsidian не поддерживает стриминг,
-	// используем fetch напрямую
 	const providerConfig = PROVIDERS[options.provider];
 	const response = await fetch(providerConfig.url, {
 		method: "POST",

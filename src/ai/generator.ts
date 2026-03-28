@@ -1,7 +1,7 @@
 import { Editor, Notice } from "obsidian";
 import { DocxPluginSettings } from "../settings";
 import { streamCompletion } from "./client";
-import { buildFullPrompt, buildPartialPrompt } from "./prompts";
+import { buildFullPrompt, buildPartialPrompt, getSystemPrompt } from "./prompts";
 
 export type GenerateMode = "full" | "partial";
 
@@ -16,10 +16,10 @@ export async function generate(
 		return;
 	}
 
-	const systemPrompt =
-		mode === "full"
-			? settings.aiSystemPromptFull
-			: settings.aiSystemPromptPartial;
+	const userPrompt = mode === "full"
+		? settings.aiSystemPromptFull
+		: settings.aiSystemPromptPartial;
+	const systemPrompt = getSystemPrompt(mode, userPrompt);
 
 	const userMessage =
 		mode === "full"
