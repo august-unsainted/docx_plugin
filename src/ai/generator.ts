@@ -41,10 +41,13 @@ export async function generate(
 
 	const startTime = Date.now();
 	const elapsed = () => Math.round((Date.now() - startTime) / 1000);
-	const notice = new Notice("🤖 Генерация...", 0);
+	const abortController = new AbortController();
+	const notice = new Notice("🤖 Ожидание... (нажмите чтобы остановить)", 0);
+	notice.noticeEl.style.cursor = "pointer";
+	notice.noticeEl.addEventListener("click", () => abortController.abort());
 	const timerInterval = setInterval(() => {
-		const phase = contentStarted ? "Генерация" : reasoningStarted ? "Модель думает" : "Ожидание";
-		notice.setMessage(`🤖 ${phase}... ${elapsed()} сек`);
+		const phase = contentStarted ? "Генерация" : reasoningStarted ? "Думает" : "Ожидание";
+		notice.setMessage(`🤖 ${phase}... ${elapsed()} сек (нажмите чтобы остановить)`);
 	}, 1000);
 	let buffer = "";
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -136,9 +139,9 @@ export async function generate(
 			provider: settings.aiProvider as any,
 			systemPrompt,
 			userMessage,
+			signal: abortController.signal,
 			onReasoning: (chunk: string) => {
 				reasoningStarted = true;
-				notice.setMessage("🤖 Модель думает...");
 				reasoningBuffer += chunk;
 				scheduleReasoningFlush();
 			},
@@ -152,7 +155,6 @@ export async function generate(
 					}
 					reasoningBuffer = "";
 					removeReasoning();
-					notice.setMessage("🤖 Генерация...");
 				}
 				buffer += chunk;
 				scheduleFlush();
