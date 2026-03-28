@@ -39,20 +39,82 @@ export async function generate(
 	editor.replaceSelection("");
 	let insertPos = editor.posToOffset(from);
 
+	const startTime = Date.now();
+	const elapsed = () => Math.round((Date.now() - startTime) / 1000);
 	const notice = new Notice("🤖 Генерация...", 0);
+	const timerInterval = setInterval(() => {
+		const phase = contentStarted ? "Генерация" : reasoningStarted ? "Модель думает" : "Ожидание";
+		notice.setMessage(`🤖 ${phase}... ${elapsed()} сек`);
+	}, 1000);
 	let buffer = "";
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
+	let reasoningStarted = false;
+	let reasoningInsertPos = insertPos;
+	const insertStartPos = insertPos;
+	let lastReasoningChar = "\n"; // начинаем как будто с новой строки
 
 	const flush = () => {
 		if (!buffer) return;
 		const text = buffer;
 		buffer = "";
 
-		editor.replaceRange(
-			text,
+		const pos = editor.offsetToPos(insertPos);
+		editor.replaceRange(text, pos);
+		insertPos += text.length;
+		editor.setCursor(editor.offsetToPos(insertPos));
+		editor.scrollIntoView({from: editor.offsetToPos(insertPos), to: editor.offsetToPos(insertPos)}, true);
+	};
+
+	const flushReasoning = () => {
+		if (!reasoningBuffer) return;
+		const raw = reasoningBuffer;
+		reasoningBuffer = "";
+
+		// Добавляем > только в начале и после реальных \n
+		let formatted = "";
+		for (let i = 0; i < raw.length; i++) {
+			const ch = raw[i];
+			if (reasoningInsertPos === insertStartPos || lastReasoningChar === "\n") {
+				formatted += "> ";
+			}
+			formatted += ch;
+			lastReasoningChar = ch;
+		}
+
+		const pos = editor.offsetToPos(reasoningInsertPos);
+		editor.replaceRange(formatted, pos);
+		reasoningInsertPos += formatted.length;
+		insertPos = reasoningInsertPos;
+		editor.setCursor(editor.offsetToPos(insertPos));
+		editor.scrollIntoView({from: editor.offsetToPos(insertPos), to: editor.offsetToPos(insertPos)}, true);
+	};
+
+	const removeReasoning = () => {
+		if (!reasoningStarted) return;
+		const reasoningText = editor.getRange(
+			editor.offsetToPos(editor.posToOffset(from)),
 			editor.offsetToPos(insertPos)
 		);
-		insertPos += text.length;
+		// Удаляем всё, что было написано как reasoning
+		editor.replaceRange(
+			"",
+			editor.offsetToPos(editor.posToOffset(from)),
+			editor.offsetToPos(insertPos)
+		);
+		insertPos = editor.posToOffset(from);
+		reasoningInsertPos = insertPos;
+	};
+
+	let reasoningBuffer = "";
+	let reasoningFlushTimer: ReturnType<typeof setTimeout> | null = null;
+	let contentStarted = false;
+
+	const scheduleReasoningFlush = () => {
+		if (reasoningFlushTimer) return;
+		reasoningFlushTimer = setTimeout(() => {
+			reasoningFlushTimer = null;
+			flushReasoning();
+		}, 100);
 	};
 
 	const scheduleFlush = () => {
@@ -64,27 +126,58 @@ export async function generate(
 	};
 
 	try {
+		const isGroq = settings.aiProvider === "groq";
+		const apiKey = isGroq ? settings.groqApiKey : settings.openrouterApiKey;
+		const model = isGroq ? settings.groqModel : settings.openrouterModel;
+
 		await streamCompletion({
-			apiKey: settings.aiApiKey,
-			model: settings.aiModel,
+			apiKey,
+			model,
+			provider: settings.aiProvider as any,
 			systemPrompt,
 			userMessage,
+			onReasoning: (chunk: string) => {
+				reasoningStarted = true;
+				notice.setMessage("🤖 Модель думает...");
+				reasoningBuffer += chunk;
+				scheduleReasoningFlush();
+			},
 			onChunk: (chunk: string) => {
+				if (reasoningStarted && !contentStarted) {
+					// Первый chunk контента — убираем reasoning
+					contentStarted = true;
+					if (reasoningFlushTimer) {
+						clearTimeout(reasoningFlushTimer);
+						reasoningFlushTimer = null;
+					}
+					reasoningBuffer = "";
+					removeReasoning();
+					notice.setMessage("🤖 Генерация...");
+				}
 				buffer += chunk;
 				scheduleFlush();
 			},
 		});
 
-		// Финальный flush
+		// Финальные flush'и
+		if (reasoningFlushTimer) {
+			clearTimeout(reasoningFlushTimer);
+			reasoningFlushTimer = null;
+		}
 		if (flushTimer) {
 			clearTimeout(flushTimer);
 			flushTimer = null;
 		}
+		if (reasoningStarted && !contentStarted) {
+			removeReasoning();
+		}
 		flush();
 
+		clearInterval(timerInterval);
 		notice.hide();
-		new Notice("✅ Генерация завершена!");
+		new Notice(`✅ Генерация завершена за ${elapsed()} сек`);
 	} catch (e: any) {
+		clearInterval(timerInterval);
 		if (flushTimer) clearTimeout(flushTimer);
 		flush();
 		notice.hide();
