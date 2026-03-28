@@ -26,6 +26,7 @@
 	},
 	"dependencies": {
 		"docx": "^9.5.1",
+		"jszip": "^3.10.1",
 		"obsidian": "latest"
 	}
 }

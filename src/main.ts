@@ -12,6 +12,7 @@ import {
 	SampleSettingTab,
 } from "./settings";
 import { exportFile } from "./docx/export";
+import { getPageCount } from "./docx/pageCount";
 import { switchCase } from "./editor/utils";
 import { generate } from "./ai/generator";
 import editorExtension from "./editor/editorExtension";
@@ -27,14 +28,14 @@ export default class DocxPlugin extends Plugin {
 			this.app.workspace.on("file-menu", (menu, file) => {
 				if (!file.name.endsWith(".md")) return;
 				menu.addItem((item: MenuItem) => {
-					item.setTitle("Экспортировать в .docx")
+					item.setTitle("Экспортировать в .doc")
 						.setIcon(this.mainIcon)
 						.onClick(() => this.handleExport());
 				});
 			})
 		);
 
-		this.addRibbonIcon(this.mainIcon, "Экспортировать в .docx", () =>
+		this.addRibbonIcon(this.mainIcon, "Экспортировать в .doc", () =>
 			this.handleExport()
 		);
 
@@ -56,16 +57,51 @@ export default class DocxPlugin extends Plugin {
 		const calculatePages = this.addStatusBarItem();
 		setIcon(calculatePages, this.mainIcon);
 		setTooltip(calculatePages, "Пересчитать количество страниц");
-		calculatePages.onclick = () => {
+		calculatePages.onclick = async () => {
 			const view = this.checkView();
 			if (view == null) return;
-			let pages = Math.round(view.editor.getValue().length / 1000);
-			pagesCount.setText(`Страниц: ${pages || 1}`);
+
+			pagesCount.setText("Страниц: ⏳");
+			new Notice("Подсчёт страниц...");
+
+			// Билдим и сохраняем временный файл
+			const { buildDocument } = await import("./docx/builder");
+			const { Packer } = await import("docx");
+			const doc = await buildDocument(
+				view.editor.getValue(),
+				this.settings,
+				this.app.vault.adapter
+			);
+			const tempPath = "_page_count_temp.docx";
+			const blob = await Packer.toBlob(doc);
+			await this.app.vault.adapter.writeBinary(tempPath, await blob.arrayBuffer());
+
+			// Открываем в Word
+			await (this.app as any).openWithDefaultApp(tempPath);
+
+			// Ждём обновления полей, сохраняем, закрываем, читаем
+			setTimeout(async () => {
+				const vaultPath = (this.app.vault.adapter as any).getBasePath();
+				const pages = await getPageCount(tempPath, vaultPath, true);
+
+				if (pages) {
+					pagesCount.setText(`Страниц: ${pages}`);
+					new Notice(`📄 Страниц: ${pages}`);
+				} else {
+					pagesCount.setText("Страниц: ??");
+					new Notice("Не удалось подсчитать страницы");
+				}
+
+				// Удаляем временный файл
+				try {
+					await this.app.vault.adapter.remove(tempPath);
+				} catch {}
+			}, 5000);
 		};
 
 		this.addCommand({
 			id: "export-docx",
-			name: "Экспортировать текущий файл в .docx",
+			name: "Экспортировать текущий файл в .doc",
 			callback: () => this.handleExport(),
 		});
 
