@@ -53,8 +53,7 @@ export async function generate(
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let reasoningStarted = false;
 	let reasoningInsertPos = insertPos;
-	const insertStartPos = insertPos;
-	let lastReasoningChar = "\n"; // начинаем как будто с новой строки
+	let reasoningLineStarted = false;
 
 	const flush = () => {
 		if (!buffer) return;
@@ -73,15 +72,16 @@ export async function generate(
 		const raw = reasoningBuffer;
 		reasoningBuffer = "";
 
-		// Добавляем > только в начале и после реальных \n
 		let formatted = "";
-		for (let i = 0; i < raw.length; i++) {
-			const ch = raw[i];
-			if (reasoningInsertPos === insertStartPos || lastReasoningChar === "\n") {
+		for (const ch of raw) {
+			if (!reasoningLineStarted) {
 				formatted += "> ";
+				reasoningLineStarted = true;
 			}
 			formatted += ch;
-			lastReasoningChar = ch;
+			if (ch === "\n") {
+				reasoningLineStarted = false;
+			}
 		}
 
 		const pos = editor.offsetToPos(reasoningInsertPos);
