@@ -105,6 +105,7 @@ export default function getFormatting(settings: DocxPluginSettings) {
 				run: {
 					size: `${settings.chapterFontSize * 2}`,
 					bold: settings.chapterBold,
+					allCaps: settings.chapterAllCaps,
 				},
 				paragraph: {
 					outlineLevel: 0,

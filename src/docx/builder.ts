@@ -98,7 +98,9 @@ export async function buildDocument(
 						? paragraphNumber
 						: `${chapterNumber}.${paragraphNumber}`;
 			}
-			return buildHeader(`${counter}. ${line}`, isChapter);
+			let prefix = isChapter && settings.chapterPrefix ? "Глава " : "";
+			let dot = isChapter || settings.paragraphDot ? ". " : " ";
+			return buildHeader(`${prefix}${counter}${dot}${line}`, isChapter);
 		}
 
 		line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {

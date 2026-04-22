@@ -26,6 +26,10 @@ export interface DocxPluginSettings {
 	paragraphBold: boolean;
 	paragraphAlignment: string;
 	paragraphIndent: boolean;
+	chapterPrefix: boolean;
+	paragraphDot: boolean;
+	chapterAllCaps: boolean;
+	saveFormat: string;
 	aiProvider: string;
 	openrouterApiKey: string;
 	openrouterModel: string;
@@ -51,6 +55,10 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	paragraphBold: true,
 	paragraphAlignment: "justified",
 	paragraphIndent: false,
+	chapterPrefix: false,
+	paragraphDot: true,
+	chapterAllCaps: false,
+	saveFormat: "doc",
 	aiProvider: "openrouter",
 	openrouterApiKey: "",
 	openrouterModel: "z-ai/glm-4.5-air:free",
@@ -208,6 +216,18 @@ export class SampleSettingTab extends PluginSettingTab {
 			"chapterIndent",
 			"Красная строка у заголовков глав",
 		);
+		this.addToggleSetting(
+			containerEl,
+			"Слово «глава» перед номером",
+			"chapterPrefix",
+			"«Глава 1. Название» вместо «1. Название»",
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Заглавные буквы",
+			"chapterAllCaps",
+			"Буквы выглядят заглавными, но в оглавлении отображаются нормально",
+		);
 
 		// ── Заголовки параграфов ──
 		containerEl.createEl("h3", { text: "Заголовки параграфов (##)" });
@@ -238,6 +258,26 @@ export class SampleSettingTab extends PluginSettingTab {
 			"Абзацный отступ",
 			"paragraphIndent",
 			"Красная строка у заголовков параграфов",
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Точка после номера",
+			"paragraphDot",
+			"«1.1. Название» или «1.1 Название»",
+		);
+
+		// ── Экспорт ──
+		containerEl.createEl("h3", { text: "Экспорт" });
+
+		this.addStringDropdown(
+			containerEl,
+			"Формат файла",
+			"saveFormat",
+			{
+				doc: ".doc",
+				docx: ".docx",
+			},
+			"Расширение сохраняемого файла",
 		);
 
 		// ── ИИ-генерация ──

@@ -16,7 +16,7 @@ export async function exportFile(
 	);
 
 	let fileName = markdownView.file?.basename;
-	const filePath = (fileName || "document") + ".doc";
+	const filePath = (fileName || "document") + `.${settings.saveFormat}`;
 	Packer.toBlob(doc).then(async (blob) => {
 		app.vault.adapter.writeBinary(filePath, await blob.arrayBuffer());
 		await (app as any).openWithDefaultApp(filePath);
