@@ -129,14 +129,16 @@ export async function generate(
 	};
 
 	try {
-		const isGroq = settings.aiProvider === "groq";
-		const apiKey = isGroq ? settings.groqApiKey : settings.openrouterApiKey;
-		const model = isGroq ? settings.groqModel : settings.openrouterModel;
+		const provider = settings.aiProviders[settings.aiActiveProvider];
+		if (!provider) {
+			new Notice("Добавьте провайдер в настройках плагина");
+			return;
+		}
 
 		await streamCompletion({
-			apiKey,
-			model,
-			provider: settings.aiProvider as any,
+			url: provider.url,
+			apiKey: provider.apiKey,
+			model: provider.model,
 			systemPrompt,
 			userMessage,
 			signal: abortController.signal,

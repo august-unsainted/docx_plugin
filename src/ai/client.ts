@@ -1,34 +1,14 @@
 import { Notice } from "obsidian";
 
-type Provider = "openrouter" | "groq";
-
-const PROVIDERS: Record<Provider, { url: string; headers: (key: string) => Record<string, string> }> = {
-	openrouter: {
-		url: "https://openrouter.ai/api/v1/chat/completions",
-		headers: (key) => ({
-			Authorization: `Bearer ${key}`,
-			"Content-Type": "application/json",
-			"HTTP-Referer": "https://obsidian.md",
-		}),
-	},
-	groq: {
-		url: "https://api.groq.com/openai/v1/chat/completions",
-		headers: (key) => ({
-			Authorization: `Bearer ${key}`,
-			"Content-Type": "application/json",
-		}),
-	},
-};
-
 interface Message {
 	role: "system" | "user" | "assistant";
 	content: string;
 }
 
 interface ClientOptions {
+	url: string;
 	apiKey: string;
 	model: string;
-	provider: Provider;
 	systemPrompt: string;
 	userMessage: string;
 	onChunk: (text: string) => void;
@@ -37,12 +17,17 @@ interface ClientOptions {
 }
 
 export async function streamCompletion(options: ClientOptions): Promise<void> {
-	const { apiKey, model, systemPrompt, userMessage, onChunk, signal } =
+	const { url, apiKey, model, systemPrompt, userMessage, onChunk, signal } =
 		options;
 
 	if (!apiKey) {
-		new Notice("Укажите API ключ OpenRouter в настройках плагина");
+		new Notice("Укажите API ключ в настройках плагина");
 		throw new Error("API key missing");
+	}
+
+	if (!url) {
+		new Notice("Укажите URL API в настройках плагина");
+		throw new Error("API URL missing");
 	}
 
 	const messages: Message[] = [
@@ -50,10 +35,12 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 		{ role: "user", content: userMessage },
 	];
 
-	const providerConfig = PROVIDERS[options.provider];
-	const response = await fetch(providerConfig.url, {
+	const response = await fetch(url, {
 		method: "POST",
-		headers: providerConfig.headers(apiKey),
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			"Content-Type": "application/json",
+		},
 		body: JSON.stringify({
 			model,
 			messages,
@@ -65,7 +52,7 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 	if (!response.ok) {
 		const errorText = await response.text();
 		new Notice(`Ошибка API: ${response.status}`);
-		throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+		throw new Error(`API error: ${response.status} ${errorText}`);
 	}
 
 	const reader = response.body?.getReader();
@@ -96,7 +83,6 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 				}
 				if (delta?.content) onChunk(delta.content);
 			} catch {
-				// пропускаем невалидные строки
 			}
 		}
 	}

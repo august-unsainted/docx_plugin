@@ -10,6 +10,13 @@ import DocxPlugin from "./main";
 
 type SettingKey = keyof DocxPluginSettings;
 
+export interface AiProviderConfig {
+	name: string;
+	url: string;
+	apiKey: string;
+	model: string;
+}
+
 export interface DocxPluginSettings {
 	fontSize: number;
 	lineSpacing: number;
@@ -30,11 +37,8 @@ export interface DocxPluginSettings {
 	paragraphDot: boolean;
 	chapterAllCaps: boolean;
 	saveFormat: string;
-	aiProvider: string;
-	openrouterApiKey: string;
-	openrouterModel: string;
-	groqApiKey: string;
-	groqModel: string;
+	aiProviders: AiProviderConfig[];
+	aiActiveProvider: number;
 	aiSystemPromptFull: string;
 	aiSystemPromptPartial: string;
 }
@@ -59,11 +63,11 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	paragraphDot: true,
 	chapterAllCaps: false,
 	saveFormat: "doc",
-	aiProvider: "openrouter",
-	openrouterApiKey: "",
-	openrouterModel: "z-ai/glm-4.5-air:free",
-	groqApiKey: "",
-	groqModel: "qwen/qwen3-32b",
+	aiProviders: [
+		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
+		{ name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKey: "", model: "qwen/qwen3-32b" },
+	],
+	aiActiveProvider: 0,
 	aiSystemPromptFull: "",
 	aiSystemPromptPartial: "",
 };
@@ -311,61 +315,92 @@ export class SampleSettingTab extends PluginSettingTab {
 				);
 			});
 
-		this.addStringDropdown(containerEl, "Провайдер", "aiProvider", {
-			openrouter: "OpenRouter",
-			groq: "Groq",
+		new Setting(containerEl)
+			.setName("Активный провайдер")
+			.addDropdown((d) => {
+				for (let i = 0; i < this.plugin.settings.aiProviders.length; i++) {
+					const p = this.plugin.settings.aiProviders[i]!;
+					d.addOption(String(i), p.name || `Провайдер ${i + 1}`);
+				}
+				d.setValue(String(this.plugin.settings.aiActiveProvider))
+					.onChange(async (v) => {
+						this.plugin.settings.aiActiveProvider = Number(v);
+						await this.plugin.saveSettings();
+					});
+			});
+
+		this.plugin.settings.aiProviders.forEach((provider, index) => {
+			const providerEl = containerEl.createDiv();
+			providerEl.createEl("h4", { text: provider.name || `Провайдер ${index + 1}` });
+
+			new Setting(providerEl)
+				.setName("Название")
+				.addText((t) =>
+					t.setValue(provider.name).onChange(async (v) => {
+						this.plugin.settings.aiProviders[index]!.name = v;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+				);
+
+			new Setting(providerEl)
+				.setName("URL API")
+				.setDesc("Адрес chat/completions эндпоинта")
+				.addText((t) =>
+					t.setValue(provider.url)
+						.setPlaceholder("https://api.example.com/v1/chat/completions")
+						.onChange(async (v) => {
+							this.plugin.settings.aiProviders[index]!.url = v;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(providerEl)
+				.setName("API ключ")
+				.addText((t) => {
+					t.inputEl.type = "password";
+					t.setValue(provider.apiKey).onChange(async (v) => {
+						this.plugin.settings.aiProviders[index]!.apiKey = v;
+						await this.plugin.saveSettings();
+					});
+				});
+
+			new Setting(providerEl)
+				.setName("Модель")
+				.addText((t) =>
+					t.setValue(provider.model).onChange(async (v) => {
+						this.plugin.settings.aiProviders[index]!.model = v;
+						await this.plugin.saveSettings();
+					}),
+				);
+
+			new Setting(providerEl)
+				.setName("Удалить провайдер")
+				.addButton((b) =>
+					b.setButtonText("Удалить").onClick(async () => {
+						this.plugin.settings.aiProviders.splice(index, 1);
+						if (this.plugin.settings.aiActiveProvider >= this.plugin.settings.aiProviders.length) {
+							this.plugin.settings.aiActiveProvider = 0;
+						}
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+				);
 		});
 
-		// ── OpenRouter ──
-		containerEl.createEl("h4", { text: "OpenRouter" });
-
 		new Setting(containerEl)
-			.setName("API ключ")
-			.setDesc("Получить на openrouter.ai/keys")
-			.addText((t) => {
-				t.inputEl.type = "password";
-				t.setValue(this.plugin.settings.openrouterApiKey)
-					.setPlaceholder("sk-or-...")
-					.onChange(async (v) => {
-						this.plugin.settings.openrouterApiKey = v;
-						await this.plugin.saveSettings();
+			.setName("Добавить провайдер")
+			.addButton((b) =>
+				b.setButtonText("+ Добавить").onClick(async () => {
+					this.plugin.settings.aiProviders.push({
+						name: "",
+						url: "",
+						apiKey: "",
+						model: "",
 					});
-			});
-
-		new Setting(containerEl).setName("Модель").addText((t) =>
-			t
-				.setValue(this.plugin.settings.openrouterModel)
-				.setPlaceholder(DEFAULT_SETTINGS.openrouterModel)
-				.onChange(async (v) => {
-					this.plugin.settings.openrouterModel = v;
 					await this.plugin.saveSettings();
+					this.display();
 				}),
-		);
-
-		// ── Groq ──
-		containerEl.createEl("h4", { text: "Groq (только с VPN)" });
-
-		new Setting(containerEl)
-			.setName("API ключ")
-			.setDesc("Получить на console.groq.com/keys")
-			.addText((t) => {
-				t.inputEl.type = "password";
-				t.setValue(this.plugin.settings.groqApiKey)
-					.setPlaceholder("gsk_...")
-					.onChange(async (v) => {
-						this.plugin.settings.groqApiKey = v;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl).setName("Модель").addText((t) =>
-			t
-				.setValue(this.plugin.settings.groqModel)
-				.setPlaceholder(DEFAULT_SETTINGS.groqModel)
-				.onChange(async (v) => {
-					this.plugin.settings.groqModel = v;
-					await this.plugin.saveSettings();
-				}),
-		);
+			);
 	}
 }
