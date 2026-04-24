@@ -331,15 +331,15 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		this.plugin.settings.aiProviders.forEach((provider, index) => {
 			const providerEl = containerEl.createDiv();
-			providerEl.createEl("h4", { text: provider.name || `Провайдер ${index + 1}` });
+			const headingEl = providerEl.createEl("h4", { text: provider.name || `Провайдер ${index + 1}` });
 
 			new Setting(providerEl)
 				.setName("Название")
 				.addText((t) =>
 					t.setValue(provider.name).onChange(async (v) => {
 						this.plugin.settings.aiProviders[index]!.name = v;
+						headingEl.textContent = v || `Провайдер ${index + 1}`;
 						await this.plugin.saveSettings();
-						this.display();
 					}),
 				);
 
