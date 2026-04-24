@@ -35,6 +35,7 @@ export async function generate(
 			? anchor
 			: head;
 
+	const savedSelection = selected;
 	// Удаляем выделенный текст (промт)
 	editor.replaceSelection("");
 	let insertPos = editor.posToOffset(from);
@@ -46,7 +47,7 @@ export async function generate(
 	notice.noticeEl.style.cursor = "pointer";
 	notice.noticeEl.addEventListener("click", () => abortController.abort());
 	const timerInterval = setInterval(() => {
-		const phase = contentStarted ? "Генерация" : reasoningStarted ? "Думает" : "Ожидание";
+		const phase = contentStarted ? "Генерация" : reasoningStarted ? "Думает" : firstTokenReceived ? "Получение ответа" : "Ожидание";
 		notice.setMessage(`🤖 ${phase}... ${elapsed()} сек (нажмите чтобы остановить)`);
 	}, 1000);
 	let buffer = "";
@@ -54,6 +55,10 @@ export async function generate(
 	let reasoningStarted = false;
 	let reasoningInsertPos = insertPos;
 	let reasoningLineStarted = false;
+	let contentStarted = false;
+	let firstTokenReceived = false;
+	let reasoningBuffer = "";
+	let reasoningFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const flush = () => {
 		if (!buffer) return;
@@ -108,10 +113,6 @@ export async function generate(
 		reasoningInsertPos = insertPos;
 	};
 
-	let reasoningBuffer = "";
-	let reasoningFlushTimer: ReturnType<typeof setTimeout> | null = null;
-	let contentStarted = false;
-
 	const scheduleReasoningFlush = () => {
 		if (reasoningFlushTimer) return;
 		reasoningFlushTimer = setTimeout(() => {
@@ -142,6 +143,9 @@ export async function generate(
 			systemPrompt,
 			userMessage,
 			signal: abortController.signal,
+			onFirstToken: () => {
+				firstTokenReceived = true;
+			},
 			onReasoning: (chunk: string) => {
 				reasoningStarted = true;
 				reasoningBuffer += chunk;
@@ -185,6 +189,11 @@ export async function generate(
 		if (flushTimer) clearTimeout(flushTimer);
 		flush();
 		notice.hide();
+
+		// Возвращаем выделенный текст
+		const currentPos = editor.offsetToPos(insertPos);
+		editor.replaceRange(savedSelection, from, currentPos);
+		editor.setCursor({ line: from.line, ch: from.ch + savedSelection.length });
 
 		if (e.name === "AbortError") {
 			new Notice("Генерация остановлена");

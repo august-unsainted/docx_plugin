@@ -1,6 +1,6 @@
 import { Notice } from "obsidian";
 
-interface Message {
+	interface Message {
 	role: "system" | "user" | "assistant";
 	content: string;
 }
@@ -13,6 +13,7 @@ interface ClientOptions {
 	userMessage: string;
 	onChunk: (text: string) => void;
 	onReasoning?: (text: string) => void;
+	onFirstToken?: () => void;
 	signal?: AbortSignal;
 }
 
@@ -53,7 +54,7 @@ function formatApiError(
 
 	if (status === 401) return "Неверный API ключ. Проверьте ключ в настройках.";
 	if (status === 403) return "Доступ запрещён. Проверьте API ключ и права.";
-	if (status === 402 || status === 402)
+	if (status === 402)
 		return "Недостаточно средств на балансе провайдера.";
 	if (status === 404)
 		return `Модель не найдена. Проверьте название модели в настройках.`;
@@ -100,17 +101,28 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 	const reqHeaders: Record<string, string> = {
 		Authorization: `Bearer ${apiKey}`,
 		"Content-Type": "application/json",
+		"HTTP-Referer": "https://obsidian.md",
 	};
 	const reqBody = { model, messages, stream: true };
 
 	console.log("[GOSTify] → request", { url, model, headers: reqHeaders, body: reqBody });
 
-	const response = await fetch(url, {
-		method: "POST",
-		headers: reqHeaders,
-		body: JSON.stringify(reqBody),
-		signal,
-	});
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			method: "POST",
+			headers: reqHeaders,
+			body: JSON.stringify(reqBody),
+			signal,
+		});
+	} catch (fetchError: any) {
+		console.log("[GOSTify] ← fetch failed", fetchError);
+		const msg = fetchError.name === "AbortError"
+			? "Запрос отменён"
+			: "Не удалось подключиться к серверу. Проверьте URL, интернет-соединение и попробуйте снова.";
+		new Notice(msg, 8000);
+		throw new Error(msg);
+	}
 
 	const respHeaders: Record<string, string> = {};
 	response.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -130,6 +142,19 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 
 	const decoder = new TextDecoder();
 	let buffer = "";
+	let inThinking = false;
+	let firstTokenFired = false;
+	let contentBuffer = "";
+
+	const fireFirstToken = () => {
+		if (!firstTokenFired) {
+			firstTokenFired = true;
+			options.onFirstToken?.();
+		}
+	};
+
+	const THINK_START = "<think>";
+	const THINK_END = "</think>";
 
 	while (true) {
 		const { done, value } = await reader.read();
@@ -148,12 +173,73 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 			try {
 				const parsed = JSON.parse(data);
 				const delta = parsed.choices?.[0]?.delta;
-				if (delta?.reasoning && options.onReasoning) {
-					options.onReasoning(delta.reasoning);
+				if (!delta) continue;
+
+				const reasoning =
+					delta.reasoning || delta.reasoning_content || "";
+				if (reasoning && options.onReasoning) {
+					fireFirstToken();
+					options.onReasoning(reasoning);
 				}
-				if (delta?.content) onChunk(delta.content);
+
+				if (delta.content != null) {
+					fireFirstToken();
+					contentBuffer += delta.content;
+
+					while (contentBuffer.length > 0) {
+						if (inThinking) {
+							const endIdx = contentBuffer.indexOf(THINK_END);
+							if (endIdx !== -1) {
+								const thinkingPart = contentBuffer.slice(0, endIdx);
+								if (thinkingPart && options.onReasoning) options.onReasoning(thinkingPart);
+								contentBuffer = contentBuffer.slice(endIdx + THINK_END.length);
+								inThinking = false;
+							} else {
+								if (contentBuffer && options.onReasoning) options.onReasoning(contentBuffer);
+								contentBuffer = "";
+								break;
+							}
+						} else {
+							const startIdx = contentBuffer.indexOf(THINK_START);
+							if (startIdx !== -1) {
+								const before = contentBuffer.slice(0, startIdx);
+								if (before) onChunk(before);
+								const afterTag = contentBuffer.slice(startIdx + THINK_START.length);
+								const endIdx = afterTag.indexOf(THINK_END);
+								if (endIdx !== -1) {
+									const thinkingPart = afterTag.slice(0, endIdx);
+									if (thinkingPart && options.onReasoning) options.onReasoning(thinkingPart);
+									contentBuffer = afterTag.slice(endIdx + THINK_END.length);
+								} else {
+									inThinking = true;
+									if (afterTag && options.onReasoning) options.onReasoning(afterTag);
+									contentBuffer = "";
+									break;
+								}
+							} else {
+								const tail = contentBuffer.slice(-THINK_START.length);
+								if (tail.length < contentBuffer.length && THINK_START.startsWith(tail)) {
+									onChunk(contentBuffer.slice(0, contentBuffer.length - tail.length));
+									contentBuffer = tail;
+								} else {
+									onChunk(contentBuffer);
+									contentBuffer = "";
+								}
+								break;
+							}
+						}
+					}
+				}
 			} catch {
 			}
+		}
+	}
+
+	if (contentBuffer) {
+		if (inThinking && options.onReasoning) {
+			options.onReasoning(contentBuffer);
+		} else {
+			onChunk(contentBuffer);
 		}
 	}
 }
