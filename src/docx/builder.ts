@@ -103,7 +103,7 @@ export async function buildDocument(
 			return buildHeader(`${prefix}${counter}${dot}${line}`, isChapter);
 		}
 
-		line = line.replace(/\[(.+)\]\((.+)\)/, (_, p1, p2) => {
+		line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, p1, p2) => {
 			sources.push(formatSource(p2));
 			return `${p1} [${sources.length}]`;
 		});

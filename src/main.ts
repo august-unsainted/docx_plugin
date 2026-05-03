@@ -1,4 +1,6 @@
 import {
+	App,
+	FuzzySuggestModal,
 	MarkdownView,
 	MenuItem,
 	Notice,
@@ -173,6 +175,15 @@ export default class DocxPlugin extends Plugin {
 				generate(editor, this.settings, "partial"),
 		});
 
+		this.addCommand({
+			id: "switch-ai-provider",
+			name: "Сменить провайдера AI",
+			hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "p" }],
+			callback: () => {
+				new ProviderSwitchModal(this.app, this).open();
+			},
+		});
+
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 		this.registerEditorExtension(editorExtension);
 	}
@@ -210,5 +221,42 @@ export default class DocxPlugin extends Plugin {
 		const view = this.checkView();
 		if (view == null) return undefined;
 		return view.editor;
+	}
+}
+
+class ProviderSwitchModal extends FuzzySuggestModal<string> {
+	plugin: DocxPlugin;
+
+	constructor(app: App, plugin: DocxPlugin) {
+		super(app);
+		this.plugin = plugin;
+		this.setPlaceholder("Выберите провайдера...");
+	}
+
+	getItems(): string[] {
+		return this.plugin.settings.aiProviders.map(
+			(p, i) => {
+				const name = p.name || `Провайдер ${i + 1}`;
+				return i === this.plugin.settings.aiActiveProvider
+					? `${name} (текущий)`
+					: name;
+			},
+		);
+	}
+
+	getItemText(item: string): string {
+		return item;
+	}
+
+	async onChooseItem(item: string): Promise<void> {
+		if (item.includes("(текущий)")) return;
+		const cleanName = item.replace(/ \(текущий\)$/, "");
+		const index = this.plugin.settings.aiProviders.findIndex(
+			(p, i) => (p.name || `Провайдер ${i + 1}`) === cleanName,
+		);
+		if (index === -1) return;
+		this.plugin.settings.aiActiveProvider = index;
+		await this.plugin.saveSettings();
+		new Notice(`Провайдер: ${cleanName}`);
 	}
 }

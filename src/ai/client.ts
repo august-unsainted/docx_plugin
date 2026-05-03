@@ -1,6 +1,8 @@
 import { Notice } from "obsidian";
+import * as http from "http";
+import * as https from "https";
 
-	interface Message {
+interface Message {
 	role: "system" | "user" | "assistant";
 	content: string;
 }
@@ -17,14 +19,14 @@ interface ClientOptions {
 	signal?: AbortSignal;
 }
 
-function getResetMinutes(headers: Headers): number | null {
-	const retryAfter = headers.get("retry-after");
+function getResetMinutes(headers: Record<string, string>): number | null {
+	const retryAfter = headers["retry-after"];
 	if (retryAfter) {
 		const sec = Number(retryAfter);
 		if (sec > 0) return Math.ceil(sec / 60);
 	}
 
-	const ratelimitReset = headers.get("x-ratelimit-reset");
+	const ratelimitReset = headers["x-ratelimit-reset"];
 	if (ratelimitReset) {
 		const val = Number(ratelimitReset);
 		if (val > 1e9) {
@@ -39,17 +41,17 @@ function getResetMinutes(headers: Headers): number | null {
 
 function formatApiError(
 	status: number,
-	headers: Headers,
+	headers: Record<string, string>,
 	body: string,
 ): string {
 	if (status === 429) {
 		const min = getResetMinutes(headers);
 		if (min && min > 0) {
 			return min > 1
-				? `Превышен лимит запросов. Попробуйте через ~${min} мин.`
-				: "Превышен лимит запросов. Попробуйте через ~1 мин.";
+				? `Слишком много запросов. Попробуйте через ~${min} мин.`
+				: "Слишком много запросов. Попробуйте через ~1 мин.";
 		}
-		return "Слишком много запросов. Попробуйте через пару минут или измените запрос.";
+		return "Слишком много запросов. Попробуйте через пару минут.";
 	}
 
 	if (status === 401) return "Неверный API ключ. Проверьте ключ в настройках.";
@@ -57,7 +59,7 @@ function formatApiError(
 	if (status === 402)
 		return "Недостаточно средств на балансе провайдера.";
 	if (status === 404)
-		return `Модель не найдена. Проверьте название модели в настройках.`;
+		return "Модель не найдена. Проверьте название модели в настройках.";
 	if (status === 413)
 		return "Запрос слишком длинный. Уменьшите объём текста.";
 	if (status === 500 || status === 502 || status === 503)
@@ -80,7 +82,7 @@ function formatApiError(
 }
 
 export async function streamCompletion(options: ClientOptions): Promise<void> {
-	const { url, apiKey, model, systemPrompt, userMessage, onChunk, signal } =
+	const { url, apiKey, model, systemPrompt, userMessage, onChunk, onReasoning, onFirstToken, signal } =
 		options;
 
 	if (!apiKey) {
@@ -103,86 +105,55 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 		"Content-Type": "application/json",
 		"HTTP-Referer": "https://obsidian.md",
 	};
-	const reqBody = { model, messages, stream: true };
+	const reqBody: Record<string, unknown> = { model, messages, stream: true };
+	if (url.includes("openrouter")) reqBody.include_reasoning = true;
+	const bodyStr = JSON.stringify(reqBody);
 
-	console.log("[GOSTify] → request", { url, model, headers: reqHeaders, body: reqBody });
+	console.log("[GOSTify] → request", { url, model });
 
-	let response: Response;
-	try {
-		response = await fetch(url, {
-			method: "POST",
-			headers: reqHeaders,
-			body: JSON.stringify(reqBody),
-			signal,
-		});
-	} catch (fetchError: any) {
-		console.log("[GOSTify] ← fetch failed", fetchError);
-		const msg = fetchError.name === "AbortError"
-			? "Запрос отменён"
-			: "Не удалось подключиться к серверу. Проверьте URL, интернет-соединение и попробуйте снова.";
-		new Notice(msg, 8000);
-		throw new Error(msg);
-	}
-
-	const respHeaders: Record<string, string> = {};
-	response.headers.forEach((v, k) => { respHeaders[k] = v; });
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		console.log("[GOSTify] ← error", { status: response.status, headers: respHeaders, body: errorText });
-		const notice = formatApiError(response.status, response.headers, errorText);
-		new Notice(notice, 8000);
-		throw new Error(notice);
-	}
-
-	console.log("[GOSTify] ← response", { status: response.status, headers: respHeaders });
-
-	const reader = response.body?.getReader();
-	if (!reader) throw new Error("No response body");
-
-	const decoder = new TextDecoder();
-	let buffer = "";
-	let inThinking = false;
 	let firstTokenFired = false;
+	let inThinking = false;
 	let contentBuffer = "";
+	let sseBuffer = "";
+
+	const THINK_START = "\u003Cthink\u003E";
+	const THINK_END = "\u003C/think\u003E";
 
 	const fireFirstToken = () => {
 		if (!firstTokenFired) {
 			firstTokenFired = true;
-			options.onFirstToken?.();
+			onFirstToken?.();
 		}
 	};
 
-	const THINK_START = "<think>";
-	const THINK_END = "</think>";
-
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-
-		buffer += decoder.decode(value, { stream: true });
-		const lines = buffer.split("\n");
-		buffer = lines.pop() || "";
-
+	const processSseLines = (text: string): boolean => {
+		const lines = text.split("\n");
 		for (const line of lines) {
 			const trimmed = line.trim();
 			if (!trimmed || !trimmed.startsWith("data: ")) continue;
 			const data = trimmed.slice(6);
-			if (data === "[DONE]") return;
+			if (data === "[DONE]") return true;
 
 			try {
 				const parsed = JSON.parse(data);
 				const delta = parsed.choices?.[0]?.delta;
 				if (!delta) continue;
 
-				const reasoning =
-					delta.reasoning || delta.reasoning_content || "";
-				if (reasoning && options.onReasoning) {
+				let reasoning: string = "";
+				if (typeof delta.reasoning === "string") {
+					reasoning = delta.reasoning;
+				} else if (delta.reasoning && typeof delta.reasoning === "object") {
+					reasoning = (delta.reasoning as Record<string, unknown>).content as string || "";
+				}
+				if (typeof delta.reasoning_content === "string") {
+					reasoning = delta.reasoning_content;
+				}
+				if (reasoning && onReasoning) {
 					fireFirstToken();
-					options.onReasoning(reasoning);
+					onReasoning(reasoning);
 				}
 
-				if (delta.content != null) {
+				if (delta.content) {
 					fireFirstToken();
 					contentBuffer += delta.content;
 
@@ -191,11 +162,11 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 							const endIdx = contentBuffer.indexOf(THINK_END);
 							if (endIdx !== -1) {
 								const thinkingPart = contentBuffer.slice(0, endIdx);
-								if (thinkingPart && options.onReasoning) options.onReasoning(thinkingPart);
+								if (thinkingPart && onReasoning) onReasoning(thinkingPart);
 								contentBuffer = contentBuffer.slice(endIdx + THINK_END.length);
 								inThinking = false;
 							} else {
-								if (contentBuffer && options.onReasoning) options.onReasoning(contentBuffer);
+								if (contentBuffer && onReasoning) onReasoning(contentBuffer);
 								contentBuffer = "";
 								break;
 							}
@@ -208,11 +179,11 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 								const endIdx = afterTag.indexOf(THINK_END);
 								if (endIdx !== -1) {
 									const thinkingPart = afterTag.slice(0, endIdx);
-									if (thinkingPart && options.onReasoning) options.onReasoning(thinkingPart);
+									if (thinkingPart && onReasoning) onReasoning(thinkingPart);
 									contentBuffer = afterTag.slice(endIdx + THINK_END.length);
 								} else {
 									inThinking = true;
-									if (afterTag && options.onReasoning) options.onReasoning(afterTag);
+									if (afterTag && onReasoning) onReasoning(afterTag);
 									contentBuffer = "";
 									break;
 								}
@@ -233,13 +204,139 @@ export async function streamCompletion(options: ClientOptions): Promise<void> {
 			} catch {
 			}
 		}
-	}
+		return false;
+	};
 
-	if (contentBuffer) {
-		if (inThinking && options.onReasoning) {
-			options.onReasoning(contentBuffer);
-		} else {
-			onChunk(contentBuffer);
+	const flushContent = () => {
+		if (contentBuffer) {
+			if (inThinking && onReasoning) onReasoning(contentBuffer);
+			else onChunk(contentBuffer);
+			contentBuffer = "";
 		}
-	}
+	};
+
+	await new Promise<void>((resolve, reject) => {
+		const parsedUrl = new URL(url);
+		const mod = parsedUrl.protocol === "https:" ? https : http;
+
+		const req = mod.request(
+			{
+				hostname: parsedUrl.hostname,
+				port: parsedUrl.port || (parsedUrl.protocol === "https:" ? 443 : 80),
+				path: parsedUrl.pathname + parsedUrl.search,
+				method: "POST",
+				headers: { ...reqHeaders, "Content-Length": Buffer.byteLength(bodyStr) },
+			},
+			(res) => {
+				const respHeaders: Record<string, string> = {};
+				for (const [k, v] of Object.entries(res.headers)) {
+					if (typeof v === "string") respHeaders[k] = v;
+					else if (Array.isArray(v)) respHeaders[k] = v.join(", ");
+				}
+
+				if ((res.statusCode ?? 0) >= 400) {
+					const chunks: Buffer[] = [];
+					res.on("data", (c: Buffer) => chunks.push(c));
+					res.on("end", () => {
+						const errorText = Buffer.concat(chunks).toString("utf-8");
+						console.log("[GOSTify] ← error body", { status: res.statusCode, body: errorText });
+						const notice = formatApiError(res.statusCode ?? 0, respHeaders, errorText);
+						new Notice(notice, 8000);
+						reject(new Error(notice));
+					});
+					return;
+				}
+
+				let done = false;
+
+				const finish = () => {
+					if (done) return;
+					done = true;
+					if (sseBuffer.trim()) processSseLines(sseBuffer);
+					flushContent();
+					signal?.removeEventListener("abort", abortHandler);
+					resolve();
+				};
+
+				const abortHandler = () => {
+					if (!done) {
+						done = true;
+						res.destroy();
+						reject(new DOMException("The user aborted a request.", "AbortError"));
+					}
+				};
+				signal?.addEventListener("abort", abortHandler, { once: true });
+
+				let lastDataTime = Date.now();
+				const stallChecker = setInterval(() => {
+					if (done) {
+						clearInterval(stallChecker);
+						return;
+					}
+					const elapsed = Math.round((Date.now() - lastDataTime) / 1000);
+					if (elapsed > 30) {
+						clearInterval(stallChecker);
+						finish();
+					}
+				}, 5000);
+
+				res.on("data", (chunk: Buffer) => {
+					if (done) return;
+					lastDataTime = Date.now();
+					sseBuffer += chunk.toString("utf-8");
+					const lines = sseBuffer.split("\n");
+					sseBuffer = lines.pop() || "";
+
+					if (processSseLines(lines.join("\n"))) {
+						clearInterval(stallChecker);
+						finish();
+						return;
+					}
+				});
+
+				res.on("end", () => {
+					clearInterval(stallChecker);
+					finish();
+				});
+
+				res.on("close", () => {
+					clearInterval(stallChecker);
+					finish();
+				});
+
+				res.on("error", (err: Error) => {
+					clearInterval(stallChecker);
+					if (!done) {
+						done = true;
+						signal?.removeEventListener("abort", abortHandler);
+						reject(err);
+					}
+				});
+			},
+		);
+
+		req.on("error", (err) => {
+			if (signal?.aborted) {
+				reject(new DOMException("The user aborted a request.", "AbortError"));
+				return;
+			}
+			const msg = "Не удалось подключиться к серверу. Проверьте URL и интернет-соединение.";
+			new Notice(msg, 8000);
+			reject(new Error(msg));
+		});
+
+		if (signal) {
+			if (signal.aborted) {
+				req.destroy();
+				reject(new DOMException("The user aborted a request.", "AbortError"));
+				return;
+			}
+			signal.addEventListener("abort", () => {
+				req.destroy();
+			}, { once: true });
+		}
+
+		req.write(bodyStr);
+		req.end();
+	});
 }

@@ -153,7 +153,6 @@ export async function generate(
 			},
 			onChunk: (chunk: string) => {
 				if (reasoningStarted && !contentStarted) {
-					// Первый chunk контента — убираем reasoning
 					contentStarted = true;
 					if (reasoningFlushTimer) {
 						clearTimeout(reasoningFlushTimer);
