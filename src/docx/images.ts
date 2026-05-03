@@ -1,11 +1,16 @@
 import { App, Notice, TFile } from "obsidian";
 import { ImageRun, Paragraph } from "docx";
-import { isImage, parseImageTag } from "../editor/utils";
+import { isImage, parseImageTag, parseSizeValue } from "../editor/utils";
+import { DocxPluginSettings } from "../settings";
+
+const MM_TO_PX = 3.78;
+const A4_WIDTH_MM = 210;
 
 export async function renderImage(
 	text: string,
 	app: App,
-	sourcePath: string
+	sourcePath: string,
+	settings: DocxPluginSettings,
 ): Promise<ImageRun | Paragraph | null> {
 	if (!isImage(text)) return null;
 
@@ -22,7 +27,7 @@ export async function renderImage(
 		return new ImageRun({
 			data: buffer,
 			type: file.extension as any,
-			transformation: await getImageDimensions(file, app, requestedWidth),
+			transformation: await getImageDimensions(file, app, requestedWidth, settings),
 		});
 	} catch (e) {
 		new Notice("Не удалось загрузить изображение " + fileName);
@@ -33,17 +38,31 @@ export async function renderImage(
 function getImageDimensions(
 	file: TFile,
 	app: App,
-	requestedWidth?: number
+	requestedWidth: number | undefined,
+	settings: DocxPluginSettings,
 ): Promise<{ width: number; height: number }> {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
 		img.src = app.vault.getResourcePath(file);
 		img.onload = () => {
-			let width = requestedWidth || 400;
+			let width = resolveWidth(requestedWidth, settings);
 			let scale = width / img.width;
 			let height = img.height * scale;
 			resolve({ width, height });
 		};
 		img.onerror = () => reject();
 	});
+}
+
+function resolveWidth(requestedWidth: number | undefined, settings: DocxPluginSettings): number {
+	if (requestedWidth !== undefined) return requestedWidth;
+
+	const parsed = parseSizeValue(settings.defaultImageSize);
+	if (!parsed) return 400;
+
+	if ("px" in parsed) return parsed.px;
+
+	const contentWidthMm = A4_WIDTH_MM - settings.marginLeft - settings.marginRight;
+	const contentWidthPx = contentWidthMm * MM_TO_PX;
+	return contentWidthPx * (parsed.percent / 100);
 }

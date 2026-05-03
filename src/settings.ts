@@ -37,6 +37,7 @@ export interface DocxPluginSettings {
 	paragraphDot: boolean;
 	chapterAllCaps: boolean;
 	saveFormat: string;
+	defaultImageSize: string;
 	aiProviders: AiProviderConfig[];
 	aiActiveProvider: number;
 	aiSystemPromptFull: string;
@@ -63,6 +64,7 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	paragraphDot: true,
 	chapterAllCaps: false,
 	saveFormat: "doc",
+	defaultImageSize: "80%",
 	aiProviders: [
 		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
 		{ name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKey: "", model: "qwen/qwen3-32b" },
@@ -283,6 +285,18 @@ export class SampleSettingTab extends PluginSettingTab {
 			},
 			"Расширение сохраняемого файла",
 		);
+
+		new Setting(containerEl)
+			.setName("Размер картинок по умолчанию")
+			.setDesc("Число в пикселях (напр. 400) или процент от ширины страницы (напр. 80%)")
+			.addText((t) =>
+				t
+					.setValue(this.plugin.settings.defaultImageSize)
+					.onChange(async (v) => {
+						this.plugin.settings.defaultImageSize = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		// ── ИИ-генерация ──
 		containerEl.createEl("h3", { text: "ИИ генерация" });

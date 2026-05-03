@@ -119,6 +119,7 @@ export async function buildDocument(
 			pageBreakBefore,
 			app,
 			sourcePath,
+			settings,
 		);
 		alignCenter = currentIsImage;
 		pageBreakBefore = false;
@@ -126,7 +127,7 @@ export async function buildDocument(
 	});
 
 	const children = [
-		await buildText("Оглавление", true, true, app, sourcePath),
+		await buildText("Оглавление", true, true, app, sourcePath, settings),
 		new TableOfContents("Оглавление", {
 			hyperlink: true,
 			headingStyleRange: "1-2",
@@ -157,9 +158,10 @@ async function buildText(
 	pageBreakBefore: boolean,
 	app: App,
 	sourcePath: string,
+	settings: DocxPluginSettings,
 ): Promise<Paragraph> {
 	let data: any = { pageBreakBefore };
-	let image = await renderImage(text, app, sourcePath);
+	let image = await renderImage(text, app, sourcePath, settings);
 	data.children = image ? [image] : parseInlineFormatting(text);
 	data.style = alignCenter || image ? "center" : "standard";
 	return new Paragraph(data);
