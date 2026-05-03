@@ -1,22 +1,28 @@
-import { DataAdapter, Notice } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
 import { ImageRun, Paragraph } from "docx";
 import { isImage, parseImageTag } from "../editor/utils";
 
 export async function renderImage(
 	text: string,
-	adapter: DataAdapter
+	app: App,
+	sourcePath: string
 ): Promise<ImageRun | Paragraph | null> {
 	if (!isImage(text)) return null;
 
 	const { fileName, requestedWidth } = parseImageTag(text);
-	const buffer = await adapter.readBinary(fileName);
+
+	const file = app.metadataCache.getFirstLinkpathDest(fileName, sourcePath);
+	if (!file) {
+		new Notice("Не удалось найти изображение " + fileName);
+		return new Paragraph("");
+	}
 
 	try {
-		let type = fileName.split(".").pop()?.toLowerCase();
+		const buffer = await app.vault.readBinary(file);
 		return new ImageRun({
 			data: buffer,
-			type: type as any,
-			transformation: await getImageDimensions(fileName, adapter, requestedWidth),
+			type: file.extension as any,
+			transformation: await getImageDimensions(file, app, requestedWidth),
 		});
 	} catch (e) {
 		new Notice("Не удалось загрузить изображение " + fileName);
@@ -25,13 +31,13 @@ export async function renderImage(
 }
 
 function getImageDimensions(
-	path: string,
-	adapter: DataAdapter,
+	file: TFile,
+	app: App,
 	requestedWidth?: number
 ): Promise<{ width: number; height: number }> {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
-		img.src = adapter.getResourcePath(path);
+		img.src = app.vault.getResourcePath(file);
 		img.onload = () => {
 			let width = requestedWidth || 400;
 			let scale = width / img.width;

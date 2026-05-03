@@ -1,6 +1,6 @@
 import { Document, Paragraph, TableOfContents } from "docx";
 import { buildTable } from "./tables";
-import { DataAdapter } from "obsidian";
+import { App } from "obsidian";
 import { DocxPluginSettings } from "../settings";
 import getFormatting from "./formatting";
 import { renderImage } from "./images";
@@ -18,7 +18,8 @@ const EXCLUSIONS = [
 export async function buildDocument(
 	markdown: string,
 	settings: DocxPluginSettings,
-	adapter: DataAdapter,
+	app: App,
+	sourcePath: string,
 ): Promise<Document> {
 	let pageBreakBefore = false,
 		alignCenter = false,
@@ -116,7 +117,8 @@ export async function buildDocument(
 			line,
 			alignCenter || currentIsImage,
 			pageBreakBefore,
-			adapter,
+			app,
+			sourcePath,
 		);
 		alignCenter = currentIsImage;
 		pageBreakBefore = false;
@@ -124,7 +126,7 @@ export async function buildDocument(
 	});
 
 	const children = [
-		await buildText("Оглавление", true, true, adapter),
+		await buildText("Оглавление", true, true, app, sourcePath),
 		new TableOfContents("Оглавление", {
 			hyperlink: true,
 			headingStyleRange: "1-2",
@@ -153,10 +155,11 @@ async function buildText(
 	text: string,
 	alignCenter: boolean,
 	pageBreakBefore: boolean,
-	adapter: DataAdapter,
+	app: App,
+	sourcePath: string,
 ): Promise<Paragraph> {
 	let data: any = { pageBreakBefore };
-	let image = await renderImage(text, adapter);
+	let image = await renderImage(text, app, sourcePath);
 	data.children = image ? [image] : parseInlineFormatting(text);
 	data.style = alignCenter || image ? "center" : "standard";
 	return new Paragraph(data);

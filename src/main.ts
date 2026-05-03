@@ -72,7 +72,8 @@ export default class DocxPlugin extends Plugin {
 			const doc = await buildDocument(
 				view.editor.getValue(),
 				this.settings,
-				this.app.vault.adapter
+				this.app,
+				view.file?.path ?? ""
 			);
 			const tempPath = "_page_count_temp.docx";
 			const blob = await Packer.toBlob(doc);

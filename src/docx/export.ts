@@ -12,7 +12,8 @@ export async function exportFile(
 	let doc = await buildDocument(
 		markdownView.editor.getValue(),
 		settings,
-		app.vault.adapter
+		app,
+		markdownView.file?.path ?? ""
 	);
 
 	let fileName = markdownView.file?.basename;
