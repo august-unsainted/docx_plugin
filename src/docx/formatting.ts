@@ -58,6 +58,7 @@ export default function getFormatting(settings: DocxPluginSettings) {
 						children: [
 							new TextRun({
 								children: ["", PageNumber.CURRENT],
+								size: 22,
 							}),
 						],
 					}),
