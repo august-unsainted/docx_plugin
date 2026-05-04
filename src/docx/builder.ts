@@ -1,4 +1,4 @@
-import { Document, Paragraph, TableOfContents } from "docx";
+import { BorderStyle, Document, Paragraph, TableOfContents } from "docx";
 import { buildTable } from "./tables";
 import { App } from "obsidian";
 import { DocxPluginSettings } from "../settings";
@@ -33,6 +33,7 @@ export async function buildDocument(
 
 	const lines = markdown.split("\n");
 	let tableBuffer: string[] = [];
+	let codeBuffer: string[] = [];
 
 	let promises = lines.map(async (line, lineIndex) => {
 		const isTableLine =
@@ -51,10 +52,19 @@ export async function buildDocument(
 			return;
 		}
 		if (line.startsWith("```")) {
-			codeStyle = !codeStyle;
+			if (codeStyle) {
+				const paragraphs = buildCodeBlock(codeBuffer);
+				codeBuffer = [];
+				codeStyle = false;
+				return paragraphs;
+			}
+			codeStyle = true;
 			return;
 		}
-		if (codeStyle) return buildCode(line);
+		if (codeStyle) {
+			codeBuffer.push(line);
+			return;
+		}
 
 		if (!line.startsWith("#") && line.match(/^\t*\d+\. .+/)) {
 			let item = line.split(". ", 2)[1] || "";
@@ -138,7 +148,7 @@ export async function buildDocument(
 			hyperlink: true,
 			headingStyleRange: "1-2",
 		}),
-		...(await Promise.all(promises)),
+		...(await Promise.all(promises)).flat().filter(Boolean),
 		...(await buildSources(sources)),
 	];
 
@@ -173,8 +183,33 @@ async function buildText(
 	return new Paragraph(data);
 }
 
-function buildCode(text: string): Paragraph {
-	return new Paragraph({ text, style: "code" });
+function buildCodeBlock(lines: string[]): Paragraph[] {
+	const sideBorder = {
+		style: BorderStyle.SINGLE,
+		size: 1,
+		color: "auto",
+	};
+	const noBorder = {
+		style: BorderStyle.NONE,
+		size: 0,
+		color: "auto",
+	};
+	const last = lines.length - 1;
+	return lines.map((text, i) => {
+		const isFirst = i === 0;
+		const isLast = i === last;
+		return new Paragraph({
+			text,
+			style: "code",
+			border: {
+				top: isFirst ? sideBorder : noBorder,
+				bottom: isLast ? sideBorder : noBorder,
+				left: sideBorder,
+				right: sideBorder,
+			},
+			spacing: isLast ? { after: 160 } : undefined,
+		});
+	});
 }
 
 function buildHeader(text: string, isChapter: boolean): Paragraph {
