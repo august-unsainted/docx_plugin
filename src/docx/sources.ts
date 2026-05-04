@@ -10,6 +10,6 @@ export async function formatSource(url: string): Promise<string> {
 		return `${title} [Электронный ресурс]. – Режим доступа: ${url} (дата обращения: ${new Date().toLocaleDateString()}).`;
 	} catch (error) {
 		console.error("Ошибка при получении страницы:", error);
-		return "Заголовок не найден";
+		return `Заголовок не найден (${url})`;
 	}
 }
