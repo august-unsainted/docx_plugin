@@ -28,6 +28,7 @@ export async function buildDocument(
 		paragraphNumber = 0,
 		pictureNumber = 0,
 		sources: Promise<string>[] = [],
+		sourceUrlIndex: Map<string, number> = new Map(),
 		numberedLists: string[][] = [[]];
 
 	const lines = markdown.split("\n");
@@ -105,6 +106,11 @@ export async function buildDocument(
 		}
 
 		line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, p1, p2) => {
+			let existingIndex = sourceUrlIndex.get(p2);
+			if (existingIndex !== undefined) {
+				return `${p1} [${existingIndex + 1}]`;
+			}
+			sourceUrlIndex.set(p2, sources.length);
 			sources.push(formatSource(p2));
 			return `${p1} [${sources.length}]`;
 		});
