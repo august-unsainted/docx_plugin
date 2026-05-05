@@ -38,6 +38,8 @@ export interface DocxPluginSettings {
 	chapterAllCaps: boolean;
 	saveFormat: string;
 	defaultImageSize: string;
+	imageShortCaption: boolean;
+	imageCaptionSeparator: string;
 	linksAtEndOfSentence: boolean;
 	aiProviders: AiProviderConfig[];
 	aiActiveProvider: number;
@@ -66,6 +68,8 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	chapterAllCaps: false,
 	saveFormat: "doc",
 	defaultImageSize: "80%",
+	imageShortCaption: false,
+	imageCaptionSeparator: "dot",
 	linksAtEndOfSentence: false,
 	aiProviders: [
 		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
@@ -274,6 +278,39 @@ export class SampleSettingTab extends PluginSettingTab {
 			"«1.1. Название» или «1.1 Название»",
 		);
 
+		// ── Изображения ──
+		containerEl.createEl("h3", { text: "Изображения" });
+
+		new Setting(containerEl)
+			.setName("Размер по умолчанию")
+			.setDesc("Число в пикселях (например, 400) или процент от ширины страницы (например, 80%)")
+			.addText((t) =>
+				t
+					.setValue(this.plugin.settings.defaultImageSize)
+					.onChange(async (v) => {
+						this.plugin.settings.defaultImageSize = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		this.addToggleSetting(
+			containerEl,
+			"Сокращать «Рисунок»",
+			"imageShortCaption",
+			"«Рис. 1» вместо «Рисунок 1»",
+		);
+
+		this.addStringDropdown(
+			containerEl,
+			"Разделитель после номера",
+			"imageCaptionSeparator",
+			{
+				dot: ". (точка)",
+				dash: "\u2013 (тире)",
+			},
+			"«Рисунок 1. Название» или «Рисунок 1 \u2013 Название»",
+		);
+
 		// ── Экспорт ──
 		containerEl.createEl("h3", { text: "Экспорт" });
 
@@ -287,18 +324,6 @@ export class SampleSettingTab extends PluginSettingTab {
 			},
 			"Расширение сохраняемого файла",
 		);
-
-		new Setting(containerEl)
-			.setName("Размер картинок по умолчанию")
-			.setDesc("Число в пикселях (напр. 400) или процент от ширины страницы (напр. 80%)")
-			.addText((t) =>
-				t
-					.setValue(this.plugin.settings.defaultImageSize)
-					.onChange(async (v) => {
-						this.plugin.settings.defaultImageSize = v;
-						await this.plugin.saveSettings();
-					}),
-			);
 
 		this.addToggleSetting(
 			containerEl,

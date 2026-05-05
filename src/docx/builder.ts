@@ -77,7 +77,7 @@ export async function buildDocument(
 			return buildNumbering(line.slice(2), -1);
 		}
 
-		line = line.trim().replace("{img}", `(рис. ${pictureNumber + 1})`);
+		line = line.trim().replace("{img}", `(${settings.imageShortCaption ? 'рис.' : 'рисунок'} ${pictureNumber + 1})`);
 
 		if (line === "") return;
 		if (line === "---") {
@@ -131,7 +131,9 @@ export async function buildDocument(
 
 		let currentIsImage = isImage(line);
 		if (alignCenter && !currentIsImage) {
-			line = `Рисунок ${++pictureNumber}. ${line}`;
+			const prefix = settings.imageShortCaption ? 'Рис.' : 'Рисунок';
+			const sep = settings.imageCaptionSeparator === 'dash' ? ' \u2013' : '.';
+			line = `${prefix} ${++pictureNumber}${sep} ${line}`;
 		}
 		let paragraph = buildText(
 			line,
