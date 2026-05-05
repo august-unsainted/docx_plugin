@@ -26,8 +26,8 @@ export default function getFormatting(settings: DocxPluginSettings) {
 		style: {
 			paragraph: {
 				indent: {
-					firstLine: 0,
-					left: convertMillimetersToTwip(level * firstLineIndent),
+					firstLine: level === 0 ? convertMillimetersToTwip(firstLineIndent) : 0,
+					left: level === 0 ? 0 : convertMillimetersToTwip((level + 1) * firstLineIndent),
 				},
 			},
 		},
