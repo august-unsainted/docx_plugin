@@ -38,6 +38,7 @@ export interface DocxPluginSettings {
 	chapterAllCaps: boolean;
 	saveFormat: string;
 	defaultImageSize: string;
+	linksAtEndOfSentence: boolean;
 	aiProviders: AiProviderConfig[];
 	aiActiveProvider: number;
 	aiSystemPromptFull: string;
@@ -65,6 +66,7 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	chapterAllCaps: false,
 	saveFormat: "doc",
 	defaultImageSize: "80%",
+	linksAtEndOfSentence: false,
 	aiProviders: [
 		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
 		{ name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKey: "", model: "qwen/qwen3-32b" },
@@ -191,7 +193,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		);
 		this.addNumber(
 			containerEl,
-			"Абзацный отступ (мм)",
+			"Абзацный отступ (см)",
 			"firstLineIndent",
 			"Красная строка",
 		);
@@ -297,6 +299,13 @@ export class SampleSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		this.addToggleSetting(
+			containerEl,
+			"Ссылки в конце предложения",
+			"linksAtEndOfSentence",
+			"Переносить [N] в конец предложения перед знаком препинания",
+		);
 
 		// ── ИИ-генерация ──
 		containerEl.createEl("h3", { text: "ИИ генерация" });

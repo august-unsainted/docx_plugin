@@ -125,6 +125,10 @@ export async function buildDocument(
 			return `${p1} [${sources.length}]`;
 		});
 
+		if (settings.linksAtEndOfSentence) {
+			line = moveRefsToSentenceEnd(line);
+		}
+
 		let currentIsImage = isImage(line);
 		if (alignCenter && !currentIsImage) {
 			line = `Рисунок ${++pictureNumber}. ${line}`;
@@ -243,4 +247,22 @@ function buildNumbering(
 		numbering,
 		style: instance === 0 ? "normal" : "standard",
 	});
+}
+
+function moveRefsToSentenceEnd(text: string): string {
+	if (!text.includes('[')) return text;
+	const sentences = text.split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁ])/);
+	return sentences.map(sentence => {
+		const refs: string[] = [];
+		const cleaned = sentence.replace(/\s*\[(\d+)\]/g, (_, n) => {
+			refs.push(`[${n}]`);
+			return '';
+		});
+		if (refs.length === 0) return sentence;
+		const punctMatch = cleaned.match(/^(.*)([.!?][»")\]]?)$/);
+		if (punctMatch) {
+			return `${punctMatch[1]} ${refs.join(' ')}${punctMatch[2]}`;
+		}
+		return `${cleaned} ${refs.join(' ')}`;
+	}).join(' ').replace(/  +/g, ' ');
 }
