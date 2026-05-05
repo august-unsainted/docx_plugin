@@ -120,7 +120,7 @@ export default class DocxPlugin extends Plugin {
 				editor.setCursor(newPos);
 				return true;
 			},
-			hotkeys: [{ modifiers: ["Shift"], key: "enter" }],
+			hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "enter" }],
 		});
 
 		this.addCommand({
