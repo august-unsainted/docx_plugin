@@ -6,6 +6,14 @@ import { DocxPluginSettings } from "../settings";
 const MM_TO_PX = 3.78;
 const A4_WIDTH_MM = 210;
 
+const imageBufferCache = new Map<string, ArrayBuffer>();
+const imageDimCache = new Map<string, { width: number; height: number }>();
+
+export function clearImageCache(): void {
+	imageBufferCache.clear();
+	imageDimCache.clear();
+}
+
 export async function renderImage(
 	text: string,
 	app: App,
@@ -23,7 +31,12 @@ export async function renderImage(
 	}
 
 	try {
-		const buffer = await app.vault.readBinary(file);
+		const cacheKey = file.path;
+		let buffer = imageBufferCache.get(cacheKey);
+		if (!buffer) {
+			buffer = await app.vault.readBinary(file);
+			imageBufferCache.set(cacheKey, buffer);
+		}
 		return new ImageRun({
 			data: buffer,
 			type: file.extension as any,
@@ -41,10 +54,19 @@ function getImageDimensions(
 	requestedWidth: number | undefined,
 	settings: DocxPluginSettings,
 ): Promise<{ width: number; height: number }> {
+	const cacheKey = file.path;
+	const cached = imageDimCache.get(cacheKey);
+	if (cached) {
+		const width = resolveWidth(requestedWidth, settings);
+		const scale = width / cached.width;
+		return Promise.resolve({ width, height: cached.height * scale });
+	}
+
 	return new Promise((resolve, reject) => {
 		const img = new Image();
 		img.src = app.vault.getResourcePath(file);
 		img.onload = () => {
+			imageDimCache.set(cacheKey, { width: img.width, height: img.height });
 			let width = resolveWidth(requestedWidth, settings);
 			let scale = width / img.width;
 			let height = img.height * scale;
