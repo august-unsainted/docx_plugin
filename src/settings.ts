@@ -36,6 +36,7 @@ export interface DocxPluginSettings {
 	chapterPrefix: boolean;
 	paragraphDot: boolean;
 	chapterAllCaps: boolean;
+	chapterDot: boolean;
 	saveFormat: string;
 	defaultImageSize: string;
 	imageShortCaption: boolean;
@@ -66,6 +67,7 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	chapterPrefix: false,
 	paragraphDot: true,
 	chapterAllCaps: false,
+	chapterDot: true,
 	saveFormat: "doc",
 	defaultImageSize: "80%",
 	imageShortCaption: false,
@@ -239,6 +241,12 @@ export class SampleSettingTab extends PluginSettingTab {
 			"Заглавные буквы",
 			"chapterAllCaps",
 			"Буквы выглядят заглавными, но в оглавлении отображаются нормально",
+		);
+		this.addToggleSetting(
+			containerEl,
+			"Точка после номера",
+			"chapterDot",
+			"«1. Название» вместо «1 Название»",
 		);
 
 		// ── Заголовки параграфов ──

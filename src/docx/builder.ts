@@ -111,7 +111,9 @@ export async function buildDocument(
 						: `${chapterNumber}.${paragraphNumber}`;
 			}
 			let prefix = isChapter && settings.chapterPrefix ? "Глава " : "";
-			let dot = isChapter || settings.paragraphDot ? ". " : " ";
+			let dot = isChapter
+				? settings.chapterDot ? ". " : " "
+				: settings.paragraphDot ? ". " : " ";
 			return buildHeader(`${prefix}${counter}${dot}${line}`, isChapter);
 		}
 
