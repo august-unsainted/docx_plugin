@@ -129,6 +129,8 @@ export async function buildDocument(
 			line = moveRefsToSentenceEnd(line);
 		}
 
+		line = stackRefs(line);
+
 		let currentIsImage = isImage(line);
 		if (alignCenter && !currentIsImage) {
 			const prefix = settings.imageShortCaption ? 'Рис.' : 'Рисунок';
@@ -267,4 +269,11 @@ function moveRefsToSentenceEnd(text: string): string {
 		}
 		return `${cleaned} ${refs.join(' ')}`;
 	}).join(' ').replace(/  +/g, ' ');
+}
+
+function stackRefs(text: string): string {
+	return text.replace(/\[(\d+)\](\s*\[(\d+)\])+/g, (match) => {
+		const nums = [...match.matchAll(/\[(\d+)\]/g)].map(m => m[1]);
+		return `[${nums.join(', ')}]`;
+	});
 }
