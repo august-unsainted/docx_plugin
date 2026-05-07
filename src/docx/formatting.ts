@@ -148,12 +148,35 @@ export default function getFormatting(settings: DocxPluginSettings) {
 					basedOn: "normal",
 					next: "normal",
 					quickFormat: true,
+					run: {
+						font: "Courier New",
+						size: 24,
+					},
 					paragraph: {
+						alignment: AlignmentType.LEFT,
 						indent: {
 							firstLine: 0,
 						},
 						spacing: {
 							line: 240,
+							before: 0,
+							after: 0,
+						},
+					},
+				},
+				{
+					id: "listing",
+					name: "Листинг",
+					basedOn: "normal",
+					next: "normal",
+					quickFormat: true,
+					paragraph: {
+						indent: {
+							firstLine: 0,
+						},
+						spacing: {
+							before: 240,
+							after: 240,
 						},
 					},
 				},

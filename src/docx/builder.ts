@@ -24,10 +24,12 @@ export async function buildDocument(
 	let pageBreakBefore = false,
 		alignCenter = false,
 		codeStyle = false,
+		codeCaption = "",
 		chapterNumber = 0,
 		paragraphNumber = 0,
 		pictureNumber = 0,
 		chapterPictureNumber = 0,
+		listingNumber = 0,
 		sources: Promise<string>[] = [],
 		sourceUrlIndex: Map<string, number> = new Map(),
 		numberedLists: string[][] = [[]];
@@ -54,11 +56,21 @@ export async function buildDocument(
 		}
 		if (line.startsWith("```")) {
 			if (codeStyle) {
+				listingNumber++;
+				const title = codeCaption
+					? `Листинг ${listingNumber} \u2013 ${codeCaption}`
+					: `Листинг ${listingNumber}`;
+				const header = new Paragraph({
+					text: title,
+					style: "listing",
+				});
 				const paragraphs = buildCodeBlock(codeBuffer);
 				codeBuffer = [];
 				codeStyle = false;
-				return paragraphs;
+				codeCaption = "";
+				return [header, ...paragraphs];
 			}
+			codeCaption = line.replace(/^```\S*\s*/, "").trim();
 			codeStyle = true;
 			return;
 		}
@@ -236,7 +248,7 @@ function buildCodeBlock(lines: string[]): Paragraph[] {
 			left: sideBorder,
 			right: sideBorder,
 		},
-		spacing: { after: 160 },
+		spacing: { after: 240 },
 	});
 	const codeParagraphs = lines.map((text) => {
 		return new Paragraph({
