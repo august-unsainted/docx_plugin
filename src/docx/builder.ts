@@ -125,6 +125,7 @@ export async function buildDocument(
 		}
 
 		line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, p1, p2) => {
+			if (settings.skipBibliography) return p1;
 			let existingIndex = sourceUrlIndex.get(p2);
 			if (existingIndex !== undefined) {
 				return `${p1} [${existingIndex + 1}]`;
@@ -171,7 +172,7 @@ export async function buildDocument(
 			headingStyleRange: "1-2",
 		}),
 		...(await Promise.all(promises)).flat().filter(Boolean),
-		...(await buildSources(sources)),
+		...(settings.skipBibliography ? [] : await buildSources(sources)),
 	];
 
 	let { properties, footers, styles, features, numbering } =
@@ -216,22 +217,40 @@ function buildCodeBlock(lines: string[]): Paragraph[] {
 		size: 0,
 		color: "auto",
 	};
-	const last = lines.length - 1;
-	return lines.map((text, i) => {
-		const isFirst = i === 0;
-		const isLast = i === last;
+	const emptyFirst = new Paragraph({
+		text: "",
+		style: "code",
+		border: {
+			top: sideBorder,
+			bottom: noBorder,
+			left: sideBorder,
+			right: sideBorder,
+		},
+	});
+	const emptyLast = new Paragraph({
+		text: "",
+		style: "code",
+		border: {
+			top: noBorder,
+			bottom: sideBorder,
+			left: sideBorder,
+			right: sideBorder,
+		},
+		spacing: { after: 160 },
+	});
+	const codeParagraphs = lines.map((text) => {
 		return new Paragraph({
-			text,
+			text: "  " + text,
 			style: "code",
 			border: {
-				top: isFirst ? sideBorder : noBorder,
-				bottom: isLast ? sideBorder : noBorder,
+				top: noBorder,
+				bottom: noBorder,
 				left: sideBorder,
 				right: sideBorder,
 			},
-			spacing: isLast ? { after: 160 } : undefined,
 		});
 	});
+	return [emptyFirst, ...codeParagraphs, emptyLast];
 }
 
 function buildHeader(text: string, isChapter: boolean): Paragraph {

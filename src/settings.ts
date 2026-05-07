@@ -43,6 +43,7 @@ export interface DocxPluginSettings {
 	imageCaptionSeparator: string;
 	imageNumbering: string;
 	linksAtEndOfSentence: boolean;
+	skipBibliography: boolean;
 	aiProviders: AiProviderConfig[];
 	aiActiveProvider: number;
 	aiSystemPromptFull: string;
@@ -75,6 +76,7 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	imageCaptionSeparator: "dot",
 	imageNumbering: "sequential",
 	linksAtEndOfSentence: false,
+	skipBibliography: false,
 	aiProviders: [
 		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
 		{ name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", apiKey: "", model: "qwen/qwen3-32b" },
@@ -351,6 +353,13 @@ export class SampleSettingTab extends PluginSettingTab {
 			"Ссылки в конце предложения",
 			"linksAtEndOfSentence",
 			"Переносить [N] в конец предложения перед знаком препинания",
+		);
+
+		this.addToggleSetting(
+			containerEl,
+			"Без списка литературы",
+			"skipBibliography",
+			"Не загружать источники и не добавлять список литературы (быстрый экспорт)",
 		);
 
 		// ── ИИ-генерация ──
