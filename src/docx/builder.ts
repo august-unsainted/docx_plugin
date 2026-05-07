@@ -27,6 +27,7 @@ export async function buildDocument(
 		chapterNumber = 0,
 		paragraphNumber = 0,
 		pictureNumber = 0,
+		chapterPictureNumber = 0,
 		sources: Promise<string>[] = [],
 		sourceUrlIndex: Map<string, number> = new Map(),
 		numberedLists: string[][] = [[]];
@@ -77,7 +78,12 @@ export async function buildDocument(
 			return buildNumbering(line.slice(2), -1);
 		}
 
-		line = line.trim().replace("{img}", `(${settings.imageShortCaption ? 'рис.' : 'рисунок'} ${pictureNumber + 1})`);
+		line = line.trim().replace("{img}", () => {
+			const nextNum = settings.imageNumbering === 'byChapter'
+				? `${chapterNumber}.${chapterPictureNumber + 1}`
+				: `${pictureNumber + 1}`;
+			return `(${settings.imageShortCaption ? 'рис.' : 'рисунок'} ${nextNum})`;
+		});
 
 		if (line === "") return;
 		if (line === "---") {
@@ -101,6 +107,7 @@ export async function buildDocument(
 
 			if (isChapter) {
 				paragraphNumber = 0;
+				chapterPictureNumber = 0;
 				counter = ++chapterNumber;
 				pageBreakBefore = false;
 			} else {
@@ -135,9 +142,14 @@ export async function buildDocument(
 
 		let currentIsImage = isImage(line);
 		if (alignCenter && !currentIsImage) {
+			pictureNumber++;
+			chapterPictureNumber++;
 			const prefix = settings.imageShortCaption ? 'Рис.' : 'Рисунок';
 			const sep = settings.imageCaptionSeparator === 'dash' ? ' \u2013' : '.';
-			line = `${prefix} ${++pictureNumber}${sep} ${line}`;
+			const num = settings.imageNumbering === 'byChapter'
+				? `${chapterNumber}.${chapterPictureNumber}`
+				: `${pictureNumber}`;
+			line = `${prefix} ${num}${sep} ${line}`;
 		}
 		let paragraph = buildText(
 			line,

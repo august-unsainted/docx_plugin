@@ -41,6 +41,7 @@ export interface DocxPluginSettings {
 	defaultImageSize: string;
 	imageShortCaption: boolean;
 	imageCaptionSeparator: string;
+	imageNumbering: string;
 	linksAtEndOfSentence: boolean;
 	aiProviders: AiProviderConfig[];
 	aiActiveProvider: number;
@@ -72,6 +73,7 @@ export const DEFAULT_SETTINGS: DocxPluginSettings = {
 	defaultImageSize: "80%",
 	imageShortCaption: false,
 	imageCaptionSeparator: "dot",
+	imageNumbering: "sequential",
 	linksAtEndOfSentence: false,
 	aiProviders: [
 		{ name: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", apiKey: "", model: "z-ai/glm-4.5-air:free" },
@@ -317,6 +319,17 @@ export class SampleSettingTab extends PluginSettingTab {
 				dash: "\u2013 (тире)",
 			},
 			"«Рисунок 1. Название» или «Рисунок 1 \u2013 Название»",
+		);
+
+		this.addStringDropdown(
+			containerEl,
+			"Нумерация рисунков",
+			"imageNumbering",
+			{
+				sequential: "Сквозная (1, 2, 3...)",
+				byChapter: "По разделам (1.1, 1.2, 2.1...)",
+			},
+			"Сквозная \u2013 единая по всему документу, по разделам \u2013 сбрасывается в каждой главе",
 		);
 
 		// ── Экспорт ──
