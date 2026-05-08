@@ -109,6 +109,29 @@ export default class DocxPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "collect-images",
+			name: "Сбор изображений",
+			editorCallback: (editor) => {
+				const text = editor.getValue();
+				const regex = /<ИЗОБРАЖЕНИЕ:\s*(.+?)>/gi;
+				const items: string[] = [];
+				let match;
+				while ((match = regex.exec(text)) !== null) {
+					const desc = match[1]!.trim();
+					items.push(desc.charAt(0).toUpperCase() + desc.slice(1));
+				}
+				if (items.length === 0) {
+					new Notice("Изображения не найдены");
+					return;
+				}
+				const list = items.map((item, i) => `${i + 1}. ${item}`).join("\n");
+				const cursor = editor.getCursor();
+				editor.replaceRange(list + "\n", cursor);
+				new Notice(`Вставлено ${items.length} изображений`);
+			},
+		});
+
+		this.addCommand({
 			id: "page-break",
 			name: "Разрыв страницы",
 			checkCallback: (checking: boolean) => {
